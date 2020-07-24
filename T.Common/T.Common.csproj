@@ -1,0 +1,110 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{21EAA1CE-2F5B-4D49-9745-2A652F10B052}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>T.Common</RootNamespace>
+    <AssemblyName>T.Common</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\..\..\..\References\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>..\..\..\References\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Renci.SshNet, Version=2016.1.0.0, Culture=neutral, PublicKeyToken=1cee9f8bde3db106, processorArchitecture=MSIL">
+      <HintPath>..\packages\SSH.NET.2016.1.0\lib\net40\Renci.SshNet.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.ComponentModel.DataAnnotations" />
+    <Reference Include="System.configuration" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.DirectoryServices" />
+    <Reference Include="System.Runtime.Caching" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="T.Entities, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\References\T.Entities.dll</HintPath>
+    </Reference>
+    <Reference Include="T.Interfaces, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\References\T.Interfaces.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Class\ADLDAP.cs" />
+    <Compile Include="Class\AppUser.cs" />
+    <Compile Include="Class\Attribute.cs" />
+    <Compile Include="Class\Extensions\BoolExtensions.cs" />
+    <Compile Include="Class\Config.cs" />
+    <Compile Include="Class\Constants.cs" />
+    <Compile Include="Class\Cryptography.cs" />
+    <Compile Include="Class\Extensions\CharExtensions.cs" />
+    <Compile Include="Class\Extensions\DataTableExtensions.cs" />
+    <Compile Include="Class\Extensions\DateTimeExtensions.cs" />
+    <Compile Include="Class\Delegates.cs" />
+    <Compile Include="Class\Enums.cs" />
+    <Compile Include="Class\EVisitor.cs" />
+    <Compile Include="Class\Extensions\ByteExtensions.cs" />
+    <Compile Include="Class\Extensions\DecimalExtensions.cs" />
+    <Compile Include="Class\Extensions\DoubleExtensions.cs" />
+    <Compile Include="Class\Extensions\ExpressionExtensions.cs" />
+    <Compile Include="Class\Extensions\IntExtensions.cs" />
+    <Compile Include="Class\Extensions\LongExtensions.cs" />
+    <Compile Include="Class\Extensions\ObjectExtensions.cs" />
+    <Compile Include="Class\Extensions\PropertyInfoExtensions.cs" />
+    <Compile Include="Class\Extensions\ShortExtensions.cs" />
+    <Compile Include="Class\Extensions\TExtensions.cs" />
+    <Compile Include="Class\Extensions\UintExtensions.cs" />
+    <Compile Include="Class\Extensions\UlongExtensions.cs" />
+    <Compile Include="Class\Extensions\UshortExtensions.cs" />
+    <Compile Include="Class\Extensions\VoidExtensions.cs" />
+    <Compile Include="Class\FileDownloader.cs" />
+    <Compile Include="Class\MemoryCache.cs" />
+    <Compile Include="Class\Mail.cs" />
+    <Compile Include="Class\StringExtensions.cs" />
+    <Compile Include="Class\UserProfile.cs" />
+    <Compile Include="Class\Utils.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

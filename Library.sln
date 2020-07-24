@@ -1,0 +1,94 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Web", "T.Web\T.Web.csproj", "{64BC8DF5-188F-484E-A0FC-AD9C18BB16C9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Common", "T.Common\T.Common.csproj", "{21EAA1CE-2F5B-4D49-9745-2A652F10B052}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Data", "T.Data\T.Data.csproj", "{F1FC391E-82C3-42D7-B616-E9F485E5E160}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Interfaces", "T.Interfaces\T.Interfaces.csproj", "{EED90BFE-F7FF-4EE7-A570-BAEC9395C811}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Request", "T.Request\T.Request.csproj", "{1C90EB5E-E56F-4EBE-9528-9BC6DD20574D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Tools", "T.Tools\T.Tools.csproj", "{684F4575-058E-4657-91CE-CC8D4B54C809}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Entities", "T.Entities\T.Entities.csproj", "{7D9580F8-F215-44E3-88AE-0BB2FEC99208}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "T.Windows", "T.Windows\T.Windows.csproj", "{70A25201-8EA4-48F8-A4A6-ED13ADF8823C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{64BC8DF5-188F-484E-A0FC-AD9C18BB16C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{64BC8DF5-188F-484E-A0FC-AD9C18BB16C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{64BC8DF5-188F-484E-A0FC-AD9C18BB16C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{64BC8DF5-188F-484E-A0FC-AD9C18BB16C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{21EAA1CE-2F5B-4D49-9745-2A652F10B052}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{21EAA1CE-2F5B-4D49-9745-2A652F10B052}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{21EAA1CE-2F5B-4D49-9745-2A652F10B052}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{21EAA1CE-2F5B-4D49-9745-2A652F10B052}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F1FC391E-82C3-42D7-B616-E9F485E5E160}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F1FC391E-82C3-42D7-B616-E9F485E5E160}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F1FC391E-82C3-42D7-B616-E9F485E5E160}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F1FC391E-82C3-42D7-B616-E9F485E5E160}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EED90BFE-F7FF-4EE7-A570-BAEC9395C811}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EED90BFE-F7FF-4EE7-A570-BAEC9395C811}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EED90BFE-F7FF-4EE7-A570-BAEC9395C811}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EED90BFE-F7FF-4EE7-A570-BAEC9395C811}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1C90EB5E-E56F-4EBE-9528-9BC6DD20574D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1C90EB5E-E56F-4EBE-9528-9BC6DD20574D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1C90EB5E-E56F-4EBE-9528-9BC6DD20574D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1C90EB5E-E56F-4EBE-9528-9BC6DD20574D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{684F4575-058E-4657-91CE-CC8D4B54C809}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{684F4575-058E-4657-91CE-CC8D4B54C809}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{684F4575-058E-4657-91CE-CC8D4B54C809}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{684F4575-058E-4657-91CE-CC8D4B54C809}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7D9580F8-F215-44E3-88AE-0BB2FEC99208}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7D9580F8-F215-44E3-88AE-0BB2FEC99208}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7D9580F8-F215-44E3-88AE-0BB2FEC99208}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7D9580F8-F215-44E3-88AE-0BB2FEC99208}.Release|Any CPU.Build.0 = Release|Any CPU
+		{70A25201-8EA4-48F8-A4A6-ED13ADF8823C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{70A25201-8EA4-48F8-A4A6-ED13ADF8823C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{70A25201-8EA4-48F8-A4A6-ED13ADF8823C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{70A25201-8EA4-48F8-A4A6-ED13ADF8823C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(TeamFoundationVersionControl) = preSolution
+		SccNumberOfProjects = 9
+		SccEnterpriseProvider = {4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}
+		SccTeamFoundationServer = https://mateuscaires.visualstudio.com/
+		SccLocalPath0 = .
+		SccProjectUniqueName1 = T.Common\\T.Common.csproj
+		SccProjectName1 = T.Common
+		SccLocalPath1 = T.Common
+		SccProjectUniqueName2 = T.Data\\T.Data.csproj
+		SccProjectName2 = T.Data
+		SccLocalPath2 = T.Data
+		SccProjectUniqueName3 = T.Entities\\T.Entities.csproj
+		SccProjectName3 = T.Entities
+		SccLocalPath3 = T.Entities
+		SccProjectUniqueName4 = T.Interfaces\\T.Interfaces.csproj
+		SccProjectName4 = T.Interfaces
+		SccLocalPath4 = T.Interfaces
+		SccProjectUniqueName5 = T.Request\\T.Request.csproj
+		SccProjectName5 = T.Request
+		SccLocalPath5 = T.Request
+		SccProjectUniqueName6 = T.Tools\\T.Tools.csproj
+		SccProjectName6 = T.Tools
+		SccLocalPath6 = T.Tools
+		SccProjectUniqueName7 = T.Web\\T.Web.csproj
+		SccProjectName7 = T.Web
+		SccLocalPath7 = T.Web
+		SccProjectUniqueName8 = T.Windows\\T.Windows.csproj
+		SccProjectName8 = T.Windows
+		SccLocalPath8 = T.Windows
+	EndGlobalSection
+EndGlobal
