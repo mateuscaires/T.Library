@@ -21,7 +21,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>..\..\..\..\References\</OutputPath>
+    <OutputPath>..\References\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -39,11 +39,11 @@
   <ItemGroup>
     <Reference Include="EntityFramework, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\..\Sources\References\EntityFramework.dll</HintPath>
+      <HintPath>..\References\EntityFramework.dll</HintPath>
     </Reference>
     <Reference Include="EntityFramework.SqlServer, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\..\Sources\References\EntityFramework.SqlServer.dll</HintPath>
+      <HintPath>..\References\EntityFramework.SqlServer.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=6.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
@@ -58,21 +58,17 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-    <Reference Include="T.Common, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\References\T.Common.dll</HintPath>
+    <Reference Include="T.Common">
+      <HintPath>..\References\T.Common.dll</HintPath>
     </Reference>
-    <Reference Include="T.Entities, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\References\T.Entities.dll</HintPath>
+    <Reference Include="T.Entities">
+      <HintPath>..\References\T.Entities.dll</HintPath>
     </Reference>
-    <Reference Include="T.Interfaces, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\References\T.Interfaces.dll</HintPath>
+    <Reference Include="T.Interfaces">
+      <HintPath>..\References\T.Interfaces.dll</HintPath>
     </Reference>
-    <Reference Include="T.Request, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\References\T.Request.dll</HintPath>
+    <Reference Include="T.Request">
+      <HintPath>..\References\T.Request.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>

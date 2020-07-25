@@ -21,7 +21,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>..\..\..\..\References\</OutputPath>
+    <OutputPath>..\References\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -51,13 +51,13 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
-    <Reference Include="T.Entities, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="T.Entities, Version=1.20.1.1, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\References\T.Entities.dll</HintPath>
+      <HintPath>..\References\T.Entities.dll</HintPath>
     </Reference>
-    <Reference Include="T.Interfaces, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="T.Interfaces, Version=1.20.1.1, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\References\T.Interfaces.dll</HintPath>
+      <HintPath>..\References\T.Interfaces.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>

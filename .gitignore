@@ -1,0 +1,10 @@
+*.suo
+*.user
+*.pdb
+bin/
+obj/
+Debug/
+Release/
+*/bin/*
+*/obj/*
+.vs/

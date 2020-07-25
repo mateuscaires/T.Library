@@ -21,7 +21,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>..\..\..\..\References\</OutputPath>
+    <OutputPath>..\References\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -55,9 +55,9 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-    <Reference Include="T.Common, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="T.Common, Version=1.20.1.1, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\References\T.Common.dll</HintPath>
+      <HintPath>..\References\T.Common.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
