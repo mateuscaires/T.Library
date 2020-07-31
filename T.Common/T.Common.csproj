@@ -91,7 +91,7 @@
     <Compile Include="Class\FileDownloader.cs" />
     <Compile Include="Class\MemoryCache.cs" />
     <Compile Include="Class\Mail.cs" />
-    <Compile Include="Class\StringExtensions.cs" />
+    <Compile Include="Class\Extensions\StringExtensions.cs" />
     <Compile Include="Class\UserProfile.cs" />
     <Compile Include="Class\Utils.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
