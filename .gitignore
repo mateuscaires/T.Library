@@ -1,4 +1,3 @@
-/References/
 *.suo
 *.user
 *.pdb
@@ -9,3 +8,4 @@ Release/
 */bin/*
 */obj/*
 .vs/
+References/*
