@@ -8,6 +8,7 @@ namespace T.Entities
         public FTPConfig()
         {
             UsePassive = true;
+            DeleteIfExists = true;
             Port = 21;
         }
 
@@ -19,6 +20,7 @@ namespace T.Entities
         public string Directory { get; set; }
         public bool EnableSsl { get; set; }
         public bool UsePassive { get; set; }
+        public bool DeleteIfExists { get; set; }
         public List<string> FilesPath { get; set; }
     }
 }

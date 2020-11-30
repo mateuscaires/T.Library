@@ -52,120 +52,6 @@ namespace T.Common
             return encoding;// Encoding.UTF8;// .GetEncoding("windows-1254");
         }
 
-        /*
-        public static void FtpFileUpload2(FTPConfig config)
-        {
-            SessionOptions sessionOptions = new SessionOptions
-            {
-                Protocol = Protocol.Sftp,
-                HostName = config.IP,
-                UserName = config.User,
-                Password = config.Password,
-                //FtpMode = FtpMode.Active,
-                //FtpSecure = FtpSecure.Explicit,
-                SshHostKeyFingerprint = "ssh-ed25519 255 29:92:36:82:ae:0c:3b:16:28:60:6c:d7:82:74:6d:df",
-                //SessionOptions.TlsHostCertificateFingerprint o
-                //SessionOptions.GiveUpSecurityAndAcceptAnyTlsHostCertificate is set,
-                //but neither SessionOptions.FtpSecure nor SessionOptions.WebdavSecure is enabled nor is the protocol S3.
-                //GiveUpSecurityAndAcceptAnyTlsHostCertificate = true,
-                //GiveUpSecurityAndAcceptAnySshHostKey = true, WebdavSecure = false
-            };
-
-            string uri = string.Concat(config.IP.Contains(CT_FtpPrefix) ? string.Empty : CT_FtpPrefix, config.IP, config.IP.EndsWith(CT_Slach) ? string.Empty : CT_Slach);
-
-            if (config.Directory.HasText())
-            {
-                uri = string.Concat(uri, string.Concat(config.Directory, config.Directory.EndsWith(CT_Slach) ? string.Empty : CT_Slach));
-            }
-                       
-            string fileFtpPath = string.Empty;
-
-            FtpWebRequest req = null;
-
-            Action<string> setreq = (method) =>
-            {
-                req = (FtpWebRequest)WebRequest.Create(fileFtpPath);
-
-                req.Credentials = new NetworkCredential(config.User, config.Password);
-                req.Method = method;
-                req.EnableSsl = config.EnableSsl;
-                req.UsePassive = config.UsePassive;
-            };
-
-            Action<string> upload = (path) =>
-            {
-                if (!File.Exists(path))
-                    return;
-
-                FileInfo fi = new FileInfo(path);
-
-                fileFtpPath = string.Concat(uri, fi.Name);
-
-                setreq(WebRequestMethods.Ftp.DeleteFile);
-
-                try
-                {
-                    FtpWebResponse response = (FtpWebResponse)req.GetResponse();
-                    response.Close();
-                }
-                catch
-                {
-
-                }
-
-                setreq(WebRequestMethods.Ftp.UploadFile);
-
-                using (Stream fileStream = File.OpenRead(path))
-                {
-                    using (Stream ftpStream = req.GetRequestStream())
-                    {
-                        byte[] buffer = new byte[10240];
-                        int read;
-                        while ((read = fileStream.Read(buffer, 0, buffer.Length)) > 0)
-                        {
-                            ftpStream.Write(buffer, 0, read);
-                        }
-                    }
-                }
-            };
-
-            if (config.FilesPath.HasItems())
-            {
-                foreach (string item in config.FilesPath)
-                {
-                    upload(item);
-                }
-            }
-
-            if (!config.FilePath.IsNullOrEmpty())
-            {
-                //upload(config.FilePath);
-
-                using (Session session = new Session())
-                {
-                    // Connect
-                    session.Open(sessionOptions);
-
-                    // Upload files
-                    TransferOptions transferOptions = new TransferOptions();
-                    transferOptions.TransferMode = TransferMode.Binary;
-
-                    TransferOperationResult transferResult;
-                    transferResult = session.PutFiles(config.FilePath, config.Directory, false, transferOptions);
-
-                    // Throw on any error
-                    transferResult.Check();
-
-                    // Print results
-                    foreach (TransferEventArgs transfer in transferResult.Transfers)
-                    {
-                        Console.WriteLine("Upload of {0} succeeded", transfer.FileName);
-                    }
-                }
-            }
-        }
-        */
-
         public static void FtpFileUpload(FTPConfig config)
         {
             string uri = string.Concat(config.IP.Contains(CT_FtpPrefix) ? string.Empty : CT_FtpPrefix, config.IP, config.IP.EndsWith(CT_Slach) ? string.Empty : CT_Slach);
@@ -212,17 +98,24 @@ namespace T.Common
 
                 setreq(WebRequestMethods.Ftp.UploadFile);
 
-                using (Stream fileStream = File.OpenRead(path))
+                try
                 {
-                    using (Stream ftpStream = req.GetRequestStream())
+                    using (Stream fileStream = File.OpenRead(path))
                     {
-                        byte[] buffer = new byte[10240];
-                        int read;
-                        while ((read = fileStream.Read(buffer, 0, buffer.Length)) > 0)
+                        using (Stream ftpStream = req.GetRequestStream())
                         {
-                            ftpStream.Write(buffer, 0, read);
+                            byte[] buffer = new byte[10240];
+                            int read;
+                            while ((read = fileStream.Read(buffer, 0, buffer.Length)) > 0)
+                            {
+                                ftpStream.Write(buffer, 0, read);
+                            }
                         }
                     }
+                }
+                catch (Exception ex)
+                {
+                    throw ex;
                 }
             };
 
@@ -240,7 +133,7 @@ namespace T.Common
                 {
                     upload(config.FilePath);
                 }
-                catch
+                catch (Exception ex)
                 {
                     SftpFileUpload(config);
                 }
@@ -250,7 +143,7 @@ namespace T.Common
         public static void SftpFileUpload(FTPConfig config)
         {
             ConnectionInfo connectionInfo = new ConnectionInfo(config.IP, config.Port, config.User, new PasswordAuthenticationMethod(config.User, config.Password));
-            
+
             using (SftpClient sftp = new SftpClient(connectionInfo))
             {
                 sftp.Connect();
@@ -259,6 +152,21 @@ namespace T.Common
 
                 using (var uplfileStream = File.OpenRead(config.FilePath))
                 {
+                    if (config.DeleteIfExists)
+                    {
+                        try
+                        {
+                            Renci.SshNet.Sftp.SftpFile file = sftp.Get(fi.Name);
+
+                            if (file.HasValue())
+                                sftp.DeleteFile(file.FullName);
+                        }
+                        catch
+                        {
+
+                        }
+                    }
+
                     sftp.UploadFile(uplfileStream, fi.Name, true);
                 }
 

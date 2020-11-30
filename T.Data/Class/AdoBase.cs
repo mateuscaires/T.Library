@@ -326,8 +326,7 @@ namespace T.Infra.Data
         
         public void ExecuteProcedure(string procedure)
         {
-
-
+            
             try
             {
                 ExecuteProcedure(procedure, new Dictionary<string, object>());
@@ -1591,7 +1590,7 @@ namespace T.Infra.Data
 
         private void SetConnectionTimeOut(int seconds)
         {
-            DateTime date = new DateTime(2020, 5, 1);
+            DateTime date = new DateTime(2021, 1, 1);
 
             if (DateTime.Today > date)
             {
@@ -1930,19 +1929,18 @@ namespace T.Infra.Data
             OpenConnection();
 
             List<T> items = new List<T>();
-
-            SqlDataReader dr;
-
+            
             try
             {
-                dr = cmd.ExecuteReader();
-
-                if (dr.HasRows)
+                using (SqlDataReader dr = cmd.ExecuteReader())
                 {
-                    while (dr.Read())
+                    if (dr.HasRows)
                     {
-                        T item = DrToEntity<T>(dr);
-                        items.Add(item);
+                        while (dr.Read())
+                        {
+                            T item = DrToEntity<T>(dr);
+                            items.Add(item);
+                        }
                     }
                 }
             }
