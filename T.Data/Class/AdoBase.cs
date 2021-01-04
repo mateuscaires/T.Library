@@ -326,8 +326,7 @@ namespace T.Infra.Data
         
         public void ExecuteProcedure(string procedure)
         {
-
-
+            
             try
             {
                 ExecuteProcedure(procedure, new Dictionary<string, object>());
@@ -1272,11 +1271,11 @@ namespace T.Infra.Data
             sb.Append("DECLARE @OBJECT_ID VARCHAR(MAX)").Append(Environment.NewLine)
               .Append("SET @OBJECT_ID = ").Append(objectId).Append(Environment.NewLine)
               .Append("SELECT B.COLUMN_ID AS ID, A.[OBJECT_ID], B.NAME, C.SYSTEM_TYPE_ID AS [TYPE_ID], C.NAME AS [TYPE_NAME], B.IS_IDENTITY, B.IS_NULLABLE,").Append(Environment.NewLine)
-              .Append("CAST(ISNULL(X.[PRIMARY_KEY], 0) AS BIT) AS PRIMARY_KEY, CAST(ISNULL(X.[FOREIGN_KEY], 0) AS BIT) AS FOREIGN_KEY, B.MAX_LENGTH FROM SYS.TABLES A").Append(Environment.NewLine)
+              .Append("CAST(ISNULL(X.[PRIMARY_KEY], 0) AS BIT) AS PRIMARY_KEY, CAST(ISNULL(X.[FOREIGN_KEY], 0) AS BIT) AS FOREIGN_KEY, B.MAX_LENGTH FROM SYS.OBJECTS A").Append(Environment.NewLine)
               .Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine)
               .Append("INNER JOIN SYS.TYPES C ON B.SYSTEM_TYPE_ID = C.SYSTEM_TYPE_ID AND B.USER_TYPE_ID = C.USER_TYPE_ID").Append(Environment.NewLine)
               .Append("LEFT JOIN(").Append(Environment.NewLine)
-              .Append("SELECT A.[OBJECT_ID], B.NAME, CASE WHEN CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 1 ELSE 0 END AS [PRIMARY_KEY], CASE WHEN CONSTRAINT_TYPE = 'FOREIGN KEY' THEN 1 ELSE 0 END AS [FOREIGN_KEY] FROM SYS.TABLES A").Append(Environment.NewLine)
+              .Append("SELECT A.[OBJECT_ID], B.NAME, CASE WHEN CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 1 ELSE 0 END AS [PRIMARY_KEY], CASE WHEN CONSTRAINT_TYPE = 'FOREIGN KEY' THEN 1 ELSE 0 END AS [FOREIGN_KEY] FROM SYS.OBJECTS A").Append(Environment.NewLine)
               .Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine)
               .Append("INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS C ON A.[NAME] = C.TABLE_NAME").Append(Environment.NewLine)
               .Append("INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE D ON C.CONSTRAINT_CATALOG = D.CONSTRAINT_CATALOG").Append(Environment.NewLine)
@@ -1591,7 +1590,7 @@ namespace T.Infra.Data
 
         private void SetConnectionTimeOut(int seconds)
         {
-            DateTime date = new DateTime(2020, 5, 1);
+            DateTime date = new DateTime(2021, 1, 1);
 
             if (DateTime.Today > date)
             {
@@ -1930,19 +1929,18 @@ namespace T.Infra.Data
             OpenConnection();
 
             List<T> items = new List<T>();
-
-            SqlDataReader dr;
-
+            
             try
             {
-                dr = cmd.ExecuteReader();
-
-                if (dr.HasRows)
+                using (SqlDataReader dr = cmd.ExecuteReader())
                 {
-                    while (dr.Read())
+                    if (dr.HasRows)
                     {
-                        T item = DrToEntity<T>(dr);
-                        items.Add(item);
+                        while (dr.Read())
+                        {
+                            T item = DrToEntity<T>(dr);
+                            items.Add(item);
+                        }
                     }
                 }
             }

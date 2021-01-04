@@ -48,7 +48,7 @@ namespace T.Common
             return value;
         }
 
-        public static object GetValue(this DataRow row, string columnName)
+        public static object GetValueObject(this DataRow row, string columnName)
         {
             try
             {
@@ -63,7 +63,7 @@ namespace T.Common
             return null;
         }
 
-        public static object GetValue(this DataRow row, Type type, string columnName)
+        public static object GetValueObject(this DataRow row, Type type, string columnName)
         {
             try
             {

@@ -238,6 +238,16 @@ namespace T.Common
             return fileContent.ToString();
         }
 
+        public static string ToXml(this DataTable table)
+        {
+            using (DataSet ds = new DataSet())
+            {
+                ds.Tables.Add(table);
+
+                return ds.GetXml();
+            }
+        }
+
         public static string ToTxtFile(this DataRow row)
         {
             return row.ToTxtFile(";");

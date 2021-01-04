@@ -39,7 +39,7 @@ namespace T.Common
                     {
                         string current = string.Empty;
                         result = resultCol[counter];
-                        if (result.Properties.Contains("samaccountname") && result.Properties.Contains("mail") && result.Properties.Contains("displayname"))
+                        if (result.Properties.Contains("samaccountname") || result.Properties.Contains("mail") || result.Properties.Contains("displayname"))
                         {
                             AppUser user = new AppUser();
                             user.Email = GetPropertyValue("mail");
@@ -58,9 +58,16 @@ namespace T.Common
 
                                 user.Properties.Add(new AppUserProperties(current, GetPropertyValue(current)));
                             }
-
+                            
                             user.Active = !user.Properties.Where(a => a.PropertyValue.ToLower().Contains("desativado")).HasItems();
 
+                            if(user.Active)
+                            {
+                                AppUserProperties p = user.Properties.Where(a => a.PropertyName == "useraccountcontrol").FirstOrDefault();
+
+                                if (p.PropertyValue == "514" || p.PropertyValue == "66050")
+                                    user.Active = false;
+                            }
                             users.Add(user);
                         }
                     }
