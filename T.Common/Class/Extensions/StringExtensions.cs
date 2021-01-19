@@ -315,53 +315,11 @@ namespace T.Common
         {
             Type t = row[column].GetType();
 
-            string value = row[column].ToString(); ;
-
-            //switch (t.Name)
-            //{
-            //    case "Double":
-            //    case "Decimal":
-            //        value = value.Replace(",", ".");
-            //        break;
-            //    default:
-            //        break;
-            //}
-
+            string value = row[column].ToString();
+            
             return value;
         }
-
-        public static string FormataData(int segundos)
-        {
-            int hor = (int)(segundos / (60 * 60));
-            int min = (int)((segundos - (hor * 60 * 60)) / 60);
-            int seg = (int)(segundos - (hor * 60 * 60) - (min * 60));
-
-            string dataFormatada = string.Format("{0}:{1}:{2}", RetornaStringMinima(hor.ToString(), 2), RetornaStringMinima(min.ToString(), 2), RetornaStringMinima(seg.ToString(), 2));
-
-            return dataFormatada;
-        }
-
-        public static string RetornaStringMinima(string valor, int qtd)
-        {
-            string stringFinal = valor;
-
-            for (var a = 0; a < qtd; a++)
-            {
-                stringFinal = "0" + stringFinal;
-            }
-
-            stringFinal = stringFinal.Substring(stringFinal.Length - qtd);
-
-            return stringFinal;
-        }
-
-        public static string ApplyTrim(this string s)
-        {
-            if (s != null)
-                return s.Trim();
-            return string.Empty;
-        }
-
+        
         public static string RemoveSpecialChar(this string s)
         {
             return s.RemoveSpecialChar(default(char));
@@ -453,7 +411,7 @@ namespace T.Common
                 return string.Empty;
             string ret = s.Replace("&nbsp;", string.Empty);
 
-            return ret.ApplyTrim();
+            return ret.Trim();
         }
 
         public static string DBVal(this decimal val)

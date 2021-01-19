@@ -35,25 +35,10 @@ namespace T.Common
             mailList.Add(new MailAddress(to));
             return Send(mailList, cc, assunto, mensagem, null);
         }
-
-        /// <summary>
-        /// Enviar email
-        /// </summary>
-        /// <param name="to">Destinatários</param>
-        /// <param name="assunto">Assunto</param>
-        /// <param name="mensagem">Mensagem</param>
-        /// <param name="anexos">anexos</param>
-        /// <returns>Booleano indicando o sucesso ou não do envio</returns>
+        
         public static bool Send(IEnumerable<string> to, string assunto, string mensagem)
         {
-            List<MailAddress> mailList = new List<MailAddress>();
-
-            foreach (string item in to)
-            {
-                mailList.Add(new MailAddress(item));
-            }
-
-            return Send(mailList, assunto, mensagem, null);
+            return Send(to, assunto, mensagem, null);
         }
 
         /// <summary>
@@ -93,6 +78,9 @@ namespace T.Common
         /// <returns>Booleano indicando o sucesso ou não do envio</returns>
         public static bool Send(IEnumerable<string> to, string assunto, string mensagem, List<Attachment> anexos)
         {
+            if (to.Empty())
+                return false;
+
             List<MailAddress> mailList = new List<MailAddress>();
 
             foreach (string item in to)

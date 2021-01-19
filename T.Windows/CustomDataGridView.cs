@@ -99,7 +99,7 @@ namespace T.Windows
         
         public TDataGridView()
         {
-            ColumnHeadersVisible = false;
+            ColumnHeadersVisible = true;
             ChangeBackColor = false;
             AllowUserToResizeRows = false;
             _parentBackColor = Color.Empty;
