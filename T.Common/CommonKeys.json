@@ -4,12 +4,20 @@
     "ClickerEndDate": "2021-12-31",	
 	"Keys":[
     {
+      "AppName": "T.Data",
       "AppKey": "F1FC391E-82C3-42D7-B616-E9F485E5E160",
       "EndDate": "2025-05-01",
       "SleepDate": "2021-01-01"
     },
     {
+      "AppName": "Clicker",	
       "AppKey": "2DFC696D-C09B-413F-9DEC-8D111B702365",
+      "EndDate": "2022-05-01",
+      "SleepDate": "2021-01-01"
+    },
+	{
+      "AppName": "ADM-SEG",	
+      "AppKey": "847CE945-3723-431E-968B-9FA79A08F6D5",
       "EndDate": "2022-05-01",
       "SleepDate": "2021-01-01"
     }
