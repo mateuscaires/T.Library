@@ -11,34 +11,49 @@ using System.Text;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json;
+using System.IO;
+using System.Net;
+using System.Net.Security;
+using T.Request;
 
 namespace T.Infra.Data
 {
     public abstract class AdoBase
     {
-        #region CONSTANTS
-
         private const string CT_QUOTE = "'";
-
         private const string CT_DOUBLEQUOTE = "''";
-
         private const string CT_AT = "@";
-        
-        #endregion
-
-        #region FIELDS
-
+        private const string AssemblyGuid = "F1FC391E-82C3-42D7-B616-E9F485E5E160";
         private SqlConnection conn;
-
         private DBConfig _config;
-
         private int _coeficient;
-
         private Visitor _visitor;
+        private string _appKey;
+        private string _dbName;
 
-        #endregion
+        private List<DB_OBJECT> DBTables
+        {
+            get
+            {
+                return LoadTables();
+            }
+        }
 
-        #region PUBLIC PROPERTIES
+        public string AppKey
+        {
+            get
+            {
+                return _appKey;
+            }
+            set
+            {
+                _appKey = value;
+                LoadKeys();
+            }
+        }
+
+        internal AppKeyItem AppKeyItem { get; set; }
 
         public virtual bool LogOnUpdate { get; set; }
 
@@ -46,102 +61,66 @@ namespace T.Infra.Data
 
         public string SqlCommandText { get; set; }
 
-        /// <summary>
-        /// Pode fornecer a string de conexão ou o nome da string na propriedade ConnectionStringName
-        /// </summary>
-        public virtual string ConnectionString
+        public string DbName
         {
-            get;
-            set;
+            get
+            {
+                return _dbName;
+            }
         }
+
+        public virtual string ConnectionString { get; private set; }
 
         public virtual Expression<T> Filter<T>(Expression<Func<T, bool>> expression)
         {
             return (Expression<T>)expression.Body;
         }
 
-        #endregion
-
-        #region CONSTRUCTORS        
-
         public AdoBase()
         {
             LogOnUpdate = true;
-
+            AppKey = "F1FC391E-82C3-42D7-B616-E9F485E5E160";
             _visitor = new Visitor();
         }
 
-        public AdoBase(string authKey) : this()
+        public AdoBase(string authKey)
+          : this()
         {
             SetSqlConnection(authKey);
         }
 
-        public AdoBase(DBConfig config) : this()
+        public AdoBase(DBConfig config)
+          : this()
         {
             SetSqlConnection(config);
         }
 
-        #endregion
-
-        #region PUBLIC METHODS
-        
-        /*
-        public T SelectSingle<T>(Func<T, bool> expression)
-        {
-            Expression<Func<T, bool>> ex = a => expression(a);
-            
-            return SelectSingle<T>(ex);
-        }
-        */
-
         public T SelectSingle<T>(Expression<Func<T, bool>> expression)
         {
-            SqlCommand cmd = GetCommand(expression);
-
-            List<T> items = FillList<T>(cmd);
-
-            if(items.HasItems())
-                return items.FirstOrDefault();
-
+            List<T> source = FillList<T>(GetCommand<T>(expression));
+            if (source.HasItems<T>())
+                return source.FirstOrDefault<T>();
             return default(T);
         }
 
-        /*
-        public List<T> Select<T>(Func<T, bool> expression)
-        {
-            Expression<Func<T, bool>> ex = a => expression(a);
-            
-            return Select<T>(ex);
-        }
-        */
-
         public List<T> Select<T>(Expression<Func<T, bool>> expression)
         {
-            SqlCommand cmd = GetCommand(expression);
-
-            List<T> items = FillList<T>(cmd);
-
-            return items;
+            return FillList<T>(GetCommand<T>(expression));
         }
 
         public void SetSqlConnection(string authKey)
         {
-            DBConfig config = MemoryCache.Instance.Get(authKey, () => GetDBConfig(authKey));
-            
-            SetSqlConnection(config);
+            SetSqlConnection(MemoryCache.Instance.Get(authKey, (() => GetDBConfig(authKey))));
         }
 
         public void SetSqlConnection(int authId)
         {
-            DBConfig config = MemoryCache.Instance.Get(string.Concat("SQL_AUTH_ID_", authId.ToString()), () => GetDBConfig(authId));
-
-            SetSqlConnection(config);
+            SetSqlConnection(MemoryCache.Instance.Get(string.Concat("SQL_AUTH_ID_", authId.ToString()), (() => GetDBConfig(authId))));
         }
 
         public void SetSqlConnection(DBConfig config)
         {
             _config = config;
-
             SetSqlConnection();
         }
 
@@ -149,7 +128,6 @@ namespace T.Infra.Data
         {
             if (_config.IsNull())
                 return;
-
             _config.ConnectionTimeout = seconds;
             SetSqlConnection();
         }
@@ -158,22 +136,18 @@ namespace T.Infra.Data
         {
             ConnectionString = connection;
             conn = new SqlConnection(ConnectionString);
+            _dbName = conn.Database;
         }
 
         public List<T> GetAll<T>() where T : class, new()
         {
             try
             {
-                string tableName;
-                T obj = new T();
-                tableName = obj.GetTableName();
-
-                List<T> items = new List<T>();
-
+                string tableName = Activator.CreateInstance<T>().GetTableName();
+                List<T> objList = new List<T>();
                 if (ExistsTable(tableName))
-                    items = Select<T>(string.Concat("SELECT * FROM ", tableName, " WITH (NOLOCK)"));
-
-                return items;
+                    objList = Select<T>(string.Concat("SELECT * FROM ", tableName, " WITH (NOLOCK)"));
+                return objList;
             }
             catch (Exception ex)
             {
@@ -188,125 +162,82 @@ namespace T.Infra.Data
 
         public T SelectSingle<T>(string query)
         {
-            T instance = default(T);
-
+            T obj = default(T);
             try
             {
                 if (typeof(T).IsValueType)
-                    instance = GetSingle<T>(query);
-
-                if(instance.IsNull())
-                    instance = Select<T>(query).FirstOrDefault();
+                    obj = GetSingle<T>(query);
+                if (((object)obj).IsNull())
+                    obj = Select<T>(query).FirstOrDefault();
             }
             catch
             {
-
             }
-
-            return instance;
+            return obj;
         }
 
         public virtual T GetByKey<T, K>(K key)
         {
             T instance = Activator.CreateInstance<T>();
-
-            string tableName = instance.GetTableName();
-            string pk = instance.GetPrimaryKey();
-
-            string query = string.Concat("SELECT TOP 1 * FROM ", tableName, " WITH(NOLOCK) WHERE ", pk, " = '", key, "'");
-
-            return SelectSingle<T>(query);
+            return SelectSingle<T>("SELECT TOP 1 * FROM " + instance.GetTableName<T>() + " WITH(NOLOCK) WHERE " + instance.GetPrimaryKey<T>() + " = '" + (object)key + "'");
         }
 
         public virtual List<T> GetByKey<T, K>(string keyName, K key)
         {
-            T instance = Activator.CreateInstance<T>();
-
-            string tableName = instance.GetTableName();
-
-            string query = string.Concat("SELECT * FROM ", tableName, " WITH(NOLOCK) WHERE ", keyName, " = '", key.ToString(), "'");
-
-            return Select<T>(query);
+            return Select<T>("SELECT * FROM " + Activator.CreateInstance<T>().GetTableName<T>() + " WITH(NOLOCK) WHERE " + keyName + " = '" + key.ToString() + "'");
         }
-        
+
         public bool ExistsTable(string tableName)
         {
-            string command = string.Empty;
-
+            string empty = string.Empty;
             tableName = tableName.Replace("[", string.Empty).Replace("]", string.Empty);
-
-            string[] parts = tableName.Split('.');
-
-            if (parts.Length > 1)
-            {
-                command = string.Concat("SELECT A.* FROM SYS.TABLES A INNER JOIN SYS.SCHEMAS B ON A.[SCHEMA_ID] = B.[SCHEMA_ID] WHERE A.[NAME] = '", parts[1], "' AND B.[NAME] = '", parts[0], "'");
-            }
+            string[] strArray = tableName.Split('.');
+            string query;
+            if (strArray.Length > 1)
+                query = "SELECT A.* FROM SYS.TABLES A INNER JOIN SYS.SCHEMAS B ON A.[SCHEMA_ID] = B.[SCHEMA_ID] WHERE A.[NAME] = '" + strArray[1] + "' AND B.[NAME] = '" + strArray[0] + "'";
             else
-            {
-                command = string.Concat("SELECT * FROM SYS.TABLES WHERE NAME = '", tableName, "'");
-            }
-
-            string @return = GetSingle<string>(command);
-
-            return !@return.IsNullOrEmpty();
+                query = "SELECT * FROM SYS.TABLES WHERE NAME = '" + tableName + "'";
+            return !GetSingle<string>(query).IsNullOrEmpty();
         }
 
         public bool ExistsView(string viewName)
         {
-            string command = string.Concat("SELECT * FROM SYS.OBJECTS O INNER JOIN SYS.SCHEMAS S ON O.SCHEMA_ID = S.SCHEMA_ID WHERE S.NAME LIKE 'dbo' AND O.name = '", viewName, "' AND type = 'V'");
-
-            string @return = GetSingle<string>(command);
-
-            return !@return.IsNullOrEmpty();
+            return !GetSingle<string>("SELECT * FROM SYS.OBJECTS O INNER JOIN SYS.SCHEMAS S ON O.SCHEMA_ID = S.SCHEMA_ID WHERE S.NAME LIKE 'dbo' AND O.name = '" + viewName + "' AND type = 'V'").IsNullOrEmpty();
         }
 
         public bool ExistsColumn(string tableName, string columnName)
         {
-            string command = string.Concat("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '", tableName, "' AND COLUMN_NAME = '", columnName, "'");
-
-            return ExisteObject(command);
+            return ExisteObject("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '" + tableName + "' AND COLUMN_NAME = '" + columnName + "'");
         }
 
         public bool ExistsProcedure(string name)
         {
-            string command = string.Concat("SELECT NAME FROM SYS.OBJECTS WHERE TYPE = 'P' AND NAME = '", name, "'");
-
-            return ExisteObject(command);
+            return ExisteObject("SELECT NAME FROM SYS.OBJECTS WHERE TYPE = 'P' AND NAME = '" + name + "'");
         }
 
         public bool ExistsFunction(string name)
         {
-            string command = string.Concat("SELECT SPECIFIC_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND SPECIFIC_NAME = '", name, "'");
-
-            return ExisteObject(command);
+            return ExisteObject("SELECT SPECIFIC_NAME FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE = 'FUNCTION' AND SPECIFIC_NAME = '" + name + "'");
         }
 
         public Procedure GetProcedure(string procedure)
         {
-            Procedure proc = new Procedure(procedure);
-
-            return GetProcedure(proc);
+            return GetProcedure(new Procedure(procedure));
         }
 
         public Procedure GetProcedure(Procedure procedure)
         {
             if (procedure.Schema.IsNullOrEmpty())
-            {
                 procedure.Schema = "dbo";
-            }
-
-            SqlCommandText = string.Concat("SELECT P.[NAME], SCH.[NAME] AS [SCHEMA], PM.DATA_TYPE, PM.ORDINAL_POSITION, PM.PARAMETER_NAME, PM.PARAMETER_MODE FROM SYS.PROCEDURES P INNER JOIN SYS.SCHEMAS SCH ON P.[SCHEMA_ID] = SCH.[SCHEMA_ID] LEFT JOIN INFORMATION_SCHEMA.PARAMETERS PM ON P.[NAME] = PM.SPECIFIC_NAME WHERE P.NAME = '", procedure.Specific_Name, "' AND SCH.[NAME] = '", procedure.Schema, "'");
-            
-            DataTable table = GetTableData(SqlCommandText);
-
-            return new Procedure(table);
+            SqlCommandText = "SELECT P.[NAME], SCH.[NAME] AS [SCHEMA], PM.DATA_TYPE, PM.ORDINAL_POSITION, PM.PARAMETER_NAME, PM.PARAMETER_MODE FROM SYS.PROCEDURES P INNER JOIN SYS.SCHEMAS SCH ON P.[SCHEMA_ID] = SCH.[SCHEMA_ID] LEFT JOIN INFORMATION_SCHEMA.PARAMETERS PM ON P.[NAME] = PM.SPECIFIC_NAME WHERE P.NAME = '" + procedure.Specific_Name + "' AND SCH.[NAME] = '" + procedure.Schema + "'";
+            return new Procedure(GetTableData(SqlCommandText));
         }
 
         public List<T> ExecuteProcedure<T>(string procedure)
         {
             try
             {
-                return ExecuteProcedure<T>(procedure, null);
+                return ExecuteProcedure<T>(procedure, (Dictionary<string, object>)null);
             }
             catch (Exception ex)
             {
@@ -316,17 +247,11 @@ namespace T.Infra.Data
 
         public List<T> ExecuteProcedure<T>(string procedure, Dictionary<string, object> parameters)
         {
-            SqlCommand cmd = GetCommand(procedure, System.Data.CommandType.StoredProcedure, parameters);
-            
-            List<T> items = FillList<T>(cmd);
-            
-            return items;
-
+            return FillList<T>(GetCommand(procedure, System.Data.CommandType.StoredProcedure, parameters));
         }
-        
+
         public void ExecuteProcedure(string procedure)
         {
-            
             try
             {
                 ExecuteProcedure(procedure, new Dictionary<string, object>());
@@ -343,12 +268,9 @@ namespace T.Infra.Data
             {
                 if (!procedure.IsValid())
                     return;
-
-                SqlCommand cmd = GetCommand(procedure.Specific_Name, System.Data.CommandType.StoredProcedure);
-                
-                MountParameters(ref cmd, procedure);
-
-                ExecuteProcedure(cmd);
+                SqlCommand command = GetCommand(procedure.Specific_Name, System.Data.CommandType.StoredProcedure);
+                MountParameters(ref command, procedure);
+                ExecuteProcedure(command);
             }
             catch (Exception ex)
             {
@@ -358,23 +280,21 @@ namespace T.Infra.Data
 
         public void ExecuteProcedure(string procedure, Dictionary<string, object> parametros)
         {
-            SqlCommand cmd = GetCommand(procedure, System.Data.CommandType.StoredProcedure);
-            
+            SqlCommand command = GetCommand(procedure, System.Data.CommandType.StoredProcedure);
             if (parametros.HasItems())
             {
-                foreach (var item in parametros)
+                foreach (KeyValuePair<string, object> parametro in parametros)
                 {
-                    cmd.Parameters.AddWithValue(string.Concat(CT_AT, item.Key), item.Value ?? DBNull.Value);
+                    command.Parameters.AddWithValue("@" + parametro.Key, parametro.Value ?? DBNull.Value);
                 }
             }
-
             try
             {
-                ExecuteProcedure(cmd);
+                ExecuteProcedure(command);
             }
             catch (Exception ex)
             {
-                throw new Exception("Falha ao Executar a procedure: " + cmd.CommandText, ex);
+                throw new Exception("Falha ao Executar a procedure: " + command.CommandText, ex);
             }
         }
 
@@ -382,14 +302,12 @@ namespace T.Infra.Data
         {
             ExecuteCommand(sqlCommand);
         }
-        
+
         public DataTable GetTableData(string procedure, Dictionary<string, object> parameters)
         {
             try
             {
-                SqlCommand cmd = GetCommand(procedure, System.Data.CommandType.StoredProcedure, parameters);
-                
-                return GetTableData(cmd);
+                return GetTableData(GetCommand(procedure, System.Data.CommandType.StoredProcedure, parameters));
             }
             catch (Exception ex)
             {
@@ -401,7 +319,7 @@ namespace T.Infra.Data
         {
             try
             {
-                return GetDataSet(procedure, null);
+                return GetDataSet(procedure, (Dictionary<string, object>)null);
             }
             catch (Exception ex)
             {
@@ -411,12 +329,9 @@ namespace T.Infra.Data
 
         public DataSet GetDataSet(string procedure, Dictionary<string, object> parameters)
         {
-
             try
             {
-                SqlCommand cmd = GetCommand(procedure, System.Data.CommandType.StoredProcedure, parameters);
-
-                return GetDataSet(cmd);
+                return GetDataSet(GetCommand(procedure, System.Data.CommandType.StoredProcedure, parameters));
             }
             catch (Exception ex)
             {
@@ -426,12 +341,9 @@ namespace T.Infra.Data
 
         public DataTable GetTableData(Procedure procedure)
         {
-
             try
             {
-                SqlCommand cmd = GetCommand(procedure);
-                
-                return GetTableData(cmd);
+                return GetTableData(GetCommand(procedure));
             }
             catch (Exception ex)
             {
@@ -442,23 +354,19 @@ namespace T.Infra.Data
         public DataTable GetTableData(Procedure procedure, out string inputOutput)
         {
             inputOutput = string.Empty;
-
             try
             {
-                SqlCommand cmd = GetCommand(procedure);
-
-                DataTable table = GetTableData(cmd);
-
+                SqlCommand command = GetCommand(procedure);
+                DataTable tableData = GetTableData(command);
                 foreach (ProcedureParameter parameter in procedure.Parameters)
                 {
                     if (parameter.Parameter_Mode == ParameterDirection.InputOutput)
                     {
-                        inputOutput = cmd.Parameters[parameter.Parameter_Name].Value.ToString();
+                        inputOutput = command.Parameters[parameter.Parameter_Name].Value.ToString();
                         break;
                     }
                 }
-
-                return table;
+                return tableData;
             }
             catch (Exception ex)
             {
@@ -470,10 +378,7 @@ namespace T.Infra.Data
         {
             try
             {
-                DataTable table = FillTable(cmd); 
-
-                return table;
-
+                return FillTable(cmd);
             }
             catch (Exception ex)
             {
@@ -485,67 +390,47 @@ namespace T.Infra.Data
         {
             try
             {
-                DataSet ds = FillDataSet(cmd);
-                
-                return ds;
-
+                return FillDataSet(cmd);
             }
             catch (Exception ex)
             {
                 throw new Exception("Falha ao Executar a procedure: " + cmd.CommandText, ex);
             }
         }
-        
+
         public void GetDataReaderArray(Procedure procedure, Action<string[], bool> callback)
         {
-            SqlCommand cmd = null;
-
+            SqlCommand cmd = (SqlCommand)null;
             try
             {
                 cmd = GetCommand(procedure);
-                
                 OpenConnection();
-
-                using (SqlDataReader dr = cmd.ExecuteReader())
+                using (SqlDataReader sqlDataReader = cmd.ExecuteReader())
                 {
-                    string[] columns = new string[] { };
-
-                    if (dr.HasRows)
+                    string[] strArray1 = new string[0];
+                    if (sqlDataReader.HasRows)
                     {
-                        columns = new string[dr.FieldCount];
-
-                        for (int i = 0; i < dr.FieldCount; i++)
-                        {
-                            columns[i] = dr.GetName(i);
-                        }
-
-                        callback(columns, false);
-
-                        bool hasRows = dr.Read();
-
+                        string[] strArray2 = new string[sqlDataReader.FieldCount];
+                        for (int ordinal = 0; ordinal < sqlDataReader.FieldCount; ++ordinal)
+                            strArray2[ordinal] = sqlDataReader.GetName(ordinal);
+                        callback(strArray2, false);
+                        sqlDataReader.Read();
+                        bool flag;
                         do
                         {
-                            columns = new string[dr.FieldCount];
-
-                            for (int i = 0; i < dr.FieldCount; i++)
-                            {
-                                columns[i] = dr[i].ToString();
-                            }
-
-                            hasRows = dr.Read();
-
-                            callback(columns, !hasRows);
-
-                        } while (hasRows);
+                            string[] strArray3 = new string[sqlDataReader.FieldCount];
+                            for (int index = 0; index < sqlDataReader.FieldCount; ++index)
+                                strArray3[index] = sqlDataReader[index].ToString();
+                            flag = sqlDataReader.Read();
+                            callback(strArray3, !flag);
+                        }
+                        while (flag);
                     }
                 }
-
                 foreach (ProcedureParameter parameter in procedure.Parameters)
                 {
                     if (parameter.Parameter_Mode == ParameterDirection.InputOutput)
-                    {
-                        parameter.Parameter_Value = cmd.Parameters[parameter.Parameter_Name].Value;                        
-                    }
+                        parameter.Parameter_Value = cmd.Parameters[parameter.Parameter_Name].Value;
                 }
             }
             catch (Exception ex)
@@ -565,23 +450,19 @@ namespace T.Infra.Data
 
         public DataTable GetTableData(string sqlCommand)
         {
-            SqlCommand cmd = GetCommand(sqlCommand);
-
+            SqlCommand command = GetCommand(sqlCommand);
             try
             {
-                DataTable table = FillTable(cmd);
-
-                return table;
-
+                return FillTable(command);
             }
             catch (Exception ex)
             {
-                throw new Exception(string.Concat("Executar o comando enviado: ", cmd.CommandText, ex));
+                throw new Exception("Executar o comando enviado: " + command.CommandText + (object)ex);
             }
             finally
             {
-                cmd.Dispose();
-                CloseConnection(cmd);
+                command.Dispose();
+                CloseConnection(command);
             }
         }
 
@@ -596,78 +477,47 @@ namespace T.Infra.Data
             {
                 if (!table.HasRows())
                     return;
-
-                if(!ExistsTable(table.TableName))
+                if (!ExistsTable(table.TableName))
                 {
                     StringBuilder sb = new StringBuilder();
-
                     sb.Append("CREATE TABLE ").Append(table.TableName).Append("(");
-
-                    for (int i = 0; i < table.Columns.Count; i++)
+                    for (int index = 0; index < table.Columns.Count; ++index)
                     {
-                        sb.Append("[").Append(table.Columns[i].ColumnName).Append("] VARCHAR(MAX)");
-                        if ((i + 1) < table.Columns.Count)
+                        sb.Append("[").Append(table.Columns[index].ColumnName).Append("] VARCHAR(MAX)");
+                        if (index + 1 < table.Columns.Count)
                             sb.Append(", ");
                     }
-
                     sb.Append(")");
-
                     ExecuteCommand(sb);
                 }
-
-                string column;
-
                 List<string> columns = GetColumns(table.TableName);
-
                 OpenConnection();
-
-                using (SqlBulkCopy bulkCopy = fireTrigger ? new SqlBulkCopy(conn.ConnectionString, SqlBulkCopyOptions.FireTriggers) : new SqlBulkCopy(conn))
+                using (SqlBulkCopy sqlBulkCopy = fireTrigger ? new SqlBulkCopy(conn.ConnectionString, SqlBulkCopyOptions.FireTriggers) : new SqlBulkCopy(conn))
                 {
-                    bulkCopy.BulkCopyTimeout = conn.ConnectionTimeout;
-
-                    foreach (DataColumn item in table.Columns)
+                    sqlBulkCopy.BulkCopyTimeout = conn.ConnectionTimeout;
+                    foreach (DataColumn column in (InternalDataCollectionBase)table.Columns)
                     {
-                        column = columns.Where(a => a.Equals(item.ColumnName, StringComparison.CurrentCultureIgnoreCase)).FirstOrDefault();
-
-                        if (column.IsNullOrEmpty())
-                            continue;
-
-                        bulkCopy.ColumnMappings.Add(column, column);
+                        DataColumn item = column;
+                        string str = columns.Where<string>((Func<string, bool>)(a => a.Equals(item.ColumnName, StringComparison.CurrentCultureIgnoreCase))).FirstOrDefault<string>();
+                        if (!str.IsNullOrEmpty())
+                            sqlBulkCopy.ColumnMappings.Add(str, str);
                     }
-
-                    bulkCopy.DestinationTableName = table.TableName;
-
+                    sqlBulkCopy.DestinationTableName = table.TableName;
                     try
                     {
-                        bulkCopy.WriteToServer(table);
+                        sqlBulkCopy.WriteToServer(table);
                     }
                     catch (SqlException ex)
                     {
                         if (ex.Message.Contains("Received an invalid column length from the bcp client for colid"))
                         {
-                            string pattern = @"\d+";
-
-                            Match match = Regex.Match(ex.Message, pattern);
-
-                            int index = ((match.Value.ToInt32()) - 1);
-
-                            FieldInfo fi = typeof(SqlBulkCopy).GetField("_sortedColumnMappings", BindingFlags.NonPublic | BindingFlags.Instance);
-
-                            object sortedColumns = fi.GetValue(bulkCopy);
-
-                            object[] items = (object[])sortedColumns.GetType().GetField("_items", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sortedColumns);
-
-                            FieldInfo itemdata = items[index].GetType().GetField("_metadata", BindingFlags.NonPublic | BindingFlags.Instance);
-
-                            object metadata = itemdata.GetValue(items[index]);
-
-                            object c = metadata.GetType().GetField("column", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetValue(metadata);
-
-                            object length = metadata.GetType().GetField("length", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).GetValue(metadata);
-
-                            throw new Exception(string.Format("Column: {0} contains data with a length greater than: {1}", c, length));
+                            string pattern = "\\d+";
+                            int index = IntExtensions.ToInt32(Regex.Match(ex.Message, pattern).Value) - 1;
+                            object obj1 = typeof(SqlBulkCopy).GetField("_sortedColumnMappings", BindingFlags.Instance | BindingFlags.NonPublic).GetValue((object)sqlBulkCopy);
+                            object[] objArray = (object[])obj1.GetType().GetField("_items", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(obj1);
+                            object obj2 = objArray[index].GetType().GetField("_metadata", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(objArray[index]);
+                            throw new Exception(string.Format("Column: {0} contains data with a length greater than: {1}", obj2.GetType().GetField("column", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(obj2), obj2.GetType().GetField("length", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).GetValue(obj2)));
                         }
-
                         throw ex;
                     }
                 }
@@ -687,58 +537,35 @@ namespace T.Infra.Data
         {
             try
             {
-                T obj = (T)Activator.CreateInstance(typeof(T));
-
-                string tableName = obj.GetTableName();
-
-                DB_OBJECT dbo = GetDBObject(tableName);
-
-                DB_OBJECT_COLUMNS pk = dbo.COLUMNS.Where(a => a.PRIMARY_KEY).FirstOrDefault();
-
-                if(pk.IsNull())
+                string tableName = ((T)Activator.CreateInstance(typeof(T))).GetTableName<T>();
+                DB_OBJECT dbObject = GetDBObject(tableName);
+                DB_OBJECT_COLUMNS dbObjectColumns = dbObject.COLUMNS.Where<DB_OBJECT_COLUMNS>((Func<DB_OBJECT_COLUMNS, bool>)(a => a.PRIMARY_KEY)).FirstOrDefault<DB_OBJECT_COLUMNS>();
+                if (dbObjectColumns.IsNull())
+                    dbObjectColumns = dbObject.COLUMNS.Where<DB_OBJECT_COLUMNS>((Func<DB_OBJECT_COLUMNS, bool>)(a => a.IS_IDENTITY)).FirstOrDefault<DB_OBJECT_COLUMNS>();
+                if (dbObjectColumns.HasValue<DB_OBJECT_COLUMNS>() && !dbObjectColumns.IS_IDENTITY && dbObjectColumns.SystemType == TypeCode.Int32)
                 {
-                    pk = dbo.COLUMNS.Where(a => a.IS_IDENTITY).FirstOrDefault();
-                }
-
-                if(pk.HasValue() && !pk.IS_IDENTITY)
-                {
-                    if(pk.SystemType == TypeCode.Int32)
+                    int num = 0;
+                    T last = GetLast<T>();
+                    if (last.HasValue<T>())
+                        num = (int)last.GetValue<T>(dbObjectColumns.NAME);
+                    foreach (T TObject in items)
                     {
-                        int key = 0;
-                        int okey = 0;
-
-                        T instance = GetLast<T>();
-
-                        if(instance.HasValue())
-                        {
-                            key = (int)instance.GetValue(pk.NAME);
-                        }
-
-                        foreach (T item in items)
-                        {
-                            okey = (int)item.GetValue(pk.NAME);
-
-                            if(okey == 0)
-                            {
-                                item.SetProperty(pk.NAME, ++key);
-                            }
-                        }
+                        if ((int)TObject.GetValue<T>(dbObjectColumns.NAME) == 0)
+                            TObject.SetProperty<T>(dbObjectColumns.NAME, (object)++num);
                     }
                 }
-
                 if (tableName.IsNullOrEmpty())
                     return;
-
-                DataTable table = items.ToDataTable();
-                table.TableName = tableName;
-                ExecuteMassInsert(table);
+                DataTable dataTable = items.ToDataTable<T>();
+                dataTable.TableName = tableName;
+                ExecuteMassInsert(dataTable);
             }
             catch (Exception ex)
             {
                 throw ex;
             }
         }
-        
+
         public void ExecuteMassInsert(DataTable table, string tableName)
         {
             table.TableName = tableName;
@@ -750,7 +577,7 @@ namespace T.Infra.Data
             table.TableName = tableName;
             ExecuteMassInsert(table, fireTrigger);
         }
-        
+
         public List<T> Select<T>() where T : class, new()
         {
             return GetAll<T>();
@@ -760,22 +587,15 @@ namespace T.Infra.Data
         {
             return Select<T>(query.ToString());
         }
-        
+
         public List<T> Select<T>(string query)
         {
-            List<T> items = null;
-
+            List<T> objList = null;
             if (ValidateQuery(query, Common.CommandType.Select))
-            {
-                SqlCommand cmd = GetCommand(query);
-
-                items = FillList<T>(cmd);
-            }
-
-            return items;
-
+                objList = FillList<T>(GetCommand(query));
+            return objList;
         }
-                
+
         public void ExecuteCommand(StringBuilder sb)
         {
             ExecuteCommand(sb.ToString());
@@ -785,148 +605,124 @@ namespace T.Infra.Data
         {
             if (query.IsNullOrEmpty())
                 return;
-
-            ValidateQuery(query, Common.CommandType.Command);
-
-            SqlCommand cmd = GetCommand(query);
-
-            ExecuteCommand(cmd);
+            ValidateQuery(query, T.Common.CommandType.Command);
+            ExecuteCommand(GetCommand(query));
         }
 
         public T Insert<T>(T TObject) where T : class
         {
             try
             {
-                DB_OBJECT dbo = GetDBObject(TObject);
-
-                DB_OBJECT_COLUMNS pk = dbo.COLUMNS.Where(a => a.PRIMARY_KEY).FirstOrDefault();
-
-                if (pk.IsNull())
+                DB_OBJECT dbObject = GetDBObject<T>(TObject);
+                DB_OBJECT_COLUMNS dbObjectColumns = dbObject.COLUMNS.Where<DB_OBJECT_COLUMNS>((Func<DB_OBJECT_COLUMNS, bool>)(a => a.PRIMARY_KEY)).FirstOrDefault<DB_OBJECT_COLUMNS>();
+                if (dbObjectColumns.IsNull())
+                    dbObjectColumns = dbObject.COLUMNS.Where<DB_OBJECT_COLUMNS>((Func<DB_OBJECT_COLUMNS, bool>)(a => a.IS_IDENTITY)).FirstOrDefault<DB_OBJECT_COLUMNS>();
+                T obj1 = default(T);
+                if (dbObjectColumns.HasValue<DB_OBJECT_COLUMNS>() && !dbObjectColumns.IS_IDENTITY)
                 {
-                    pk = dbo.COLUMNS.Where(a => a.IS_IDENTITY).FirstOrDefault();
-                }
-
-                T instance = null;
-
-                object lastPkVal;
-
-                object pkVal;
-
-                if (pk.HasValue())
-                {
-                    if (!pk.IS_IDENTITY)
+                    T TObject1 = GetLast<T>();
+                    if (TObject1.IsNull())
+                        TObject1 = Activator.CreateInstance<T>();
+                    object obj2 = TObject1.GetValue<T>(dbObjectColumns.NAME);
+                    object obj3 = TObject.GetValue<T>(dbObjectColumns.NAME);
+                    switch (dbObjectColumns.SystemType)
                     {
-                        instance = GetLast<T>();
-                        
-                        if (instance.IsNull())
-                            instance = Activator.CreateInstance<T>();
-
-                        lastPkVal = instance.GetValue(pk.NAME);
-                        pkVal = TObject.GetValue(pk.NAME);
-
-                        switch (pk.SystemType)
-                        {
-                            case TypeCode.Int16:
-                                {
-                                    if (((Int16)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if(((Int16)lastPkVal) == (Int16)pkVal)
-                                        pkVal = (((Int16)lastPkVal) + 1);
-                                }
+                        case TypeCode.Int16:
+                            if ((short)obj3 == (short)0)
+                                obj3 = obj2;
+                            if ((int)(short)obj2 == (int)(short)obj3)
+                            {
+                                obj3 = (object)((int)(short)obj2 + 1);
                                 break;
-                            case TypeCode.UInt16:
-                                {
-                                    if (((UInt16)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((UInt16)lastPkVal == (Int16)pkVal)
-                                        pkVal = (((UInt16)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.UInt16:
+                            if ((ushort)obj3 == (ushort)0)
+                                obj3 = obj2;
+                            if ((int)(ushort)obj2 == (int)(short)obj3)
+                            {
+                                obj3 = (object)((int)(ushort)obj2 + 1);
                                 break;
-                            case TypeCode.Int32:
-                                {
-                                    if (((Int32)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((Int32)lastPkVal == (Int32)pkVal)
-                                        pkVal = (((Int32)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.Int32:
+                            if ((int)obj3 == 0)
+                                obj3 = obj2;
+                            if ((int)obj2 == (int)obj3)
+                            {
+                                obj3 = (object)((int)obj2 + 1);
                                 break;
-                            case TypeCode.UInt32:
-                                {
-                                    if (((UInt32)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((UInt32)lastPkVal == (UInt32)pkVal)
-                                        pkVal = (((UInt32)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.UInt32:
+                            if ((uint)obj3 == 0U)
+                                obj3 = obj2;
+                            if ((int)(uint)obj2 == (int)(uint)obj3)
+                            {
+                                obj3 = (object)(uint)((int)(uint)obj2 + 1);
                                 break;
-                            case TypeCode.Int64:
-                                {
-                                    if (((Int64)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((Int64)lastPkVal == (Int64)pkVal)
-                                        pkVal = (((Int64)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.Int64:
+                            if ((long)obj3 == 0L)
+                                obj3 = obj2;
+                            if ((long)obj2 == (long)obj3)
+                            {
+                                obj3 = (object)((long)obj2 + 1L);
                                 break;
-                            case TypeCode.UInt64:
-                                {
-                                    if (((UInt64)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((UInt64)lastPkVal == (UInt64)pkVal)
-                                        pkVal = (((UInt64)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.UInt64:
+                            if ((ulong)obj3 == 0UL)
+                                obj3 = obj2;
+                            if ((long)(ulong)obj2 == (long)(ulong)obj3)
+                            {
+                                obj3 = (object)(ulong)((long)(ulong)obj2 + 1L);
                                 break;
-                            case TypeCode.Single:
-                                {
-                                    if (((float)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((float)lastPkVal == (float)pkVal)
-                                        pkVal = (((float)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.Single:
+                            if ((double)(float)obj3 == 0.0)
+                                obj3 = obj2;
+                            if ((double)(float)obj2 == (double)(float)obj3)
+                            {
+                                obj3 = (object)(float)((double)(float)obj2 + 1.0);
                                 break;
-                            case TypeCode.Double:
-                                {
-                                    if (((double)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((double)lastPkVal == (double)pkVal)
-                                        pkVal = (((double)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.Double:
+                            if ((double)obj3 == 0.0)
+                                obj3 = obj2;
+                            if ((double)obj2 == (double)obj3)
+                            {
+                                obj3 = (object)((double)obj2 + 1.0);
                                 break;
-                            case TypeCode.Decimal:
-                                {
-                                    if (((decimal)pkVal) == 0)
-                                        pkVal = lastPkVal;
-
-                                    if ((decimal)lastPkVal == (decimal)pkVal)
-                                        pkVal = (((decimal)lastPkVal) + 1);
-                                }
+                            }
+                            break;
+                        case TypeCode.Decimal:
+                            if ((Decimal)obj3 == Decimal.Zero)
+                                obj3 = obj2;
+                            if ((Decimal)obj2 == (Decimal)obj3)
+                            {
+                                obj3 = (object)((Decimal)obj2 + Decimal.One);
                                 break;
-                        }
-
-                        TObject.SetProperty(pk.NAME, pkVal);
+                            }
+                            break;
                     }
+                    TObject.SetProperty<T>(dbObjectColumns.NAME, obj3);
                 }
-
-                ExecuteCommand(PrepareInsert(TObject, dbo));
-
-                if(pk.HasValue() && pk.IS_IDENTITY)
+                ExecuteCommand(PrepareInsert<T>(TObject, dbObject));
+                if (dbObjectColumns.HasValue<DB_OBJECT_COLUMNS>() && dbObjectColumns.IS_IDENTITY)
                 {
-                    instance = GetLast<T>();
-                    TObject.SetProperty(pk.NAME, instance.GetValue(pk.NAME));
+                    T last = GetLast<T>();
+                    TObject.SetProperty<T>(dbObjectColumns.NAME, last.GetValue<T>(dbObjectColumns.NAME));
                 }
             }
             catch (Exception ex)
             {
-                LogEx(ex, TObject);
+                LogEx<T>(ex, TObject);
                 throw ex;
             }
-
             return TObject;
         }
 
@@ -934,225 +730,140 @@ namespace T.Infra.Data
         {
             try
             {
-                T TObject = Activator.CreateInstance<T>();
-
-                string tableName = TObject.GetTableName();
-
+                T e = Activator.CreateInstance<T>();
+                string tableName = e.GetTableName<T>();
                 if (tableName.HasText())
                 {
-                    string pk = TObject.GetPrimaryKey();
-
-                    if (pk.HasText())
-                    {
-                        string command = string.Concat("SELECT TOP 1 * FROM ", tableName, " WITH(NOLOCK) ORDER BY ", pk, " DESC");
-                        TObject = SelectSingle<T>(command);
-                    }
+                    string primaryKey = e.GetPrimaryKey<T>();
+                    if (primaryKey.HasText())
+                        e = SelectSingle<T>("SELECT TOP 1 * FROM " + tableName + " WITH(NOLOCK) ORDER BY " + primaryKey + " DESC");
                 }
-
-                return TObject;
+                return e;
             }
             catch
             {
                 return default(T);
             }
         }
-        
+
         public T Update<T>(T instance) where T : class
         {
             try
             {
-                StringBuilder sb = new StringBuilder();
-                var tablename = instance.GetTableName();
-
-                if (tablename.IsNullOrEmpty())
+                StringBuilder stringBuilder1 = new StringBuilder();
+                string tableName = instance.GetTableName<T>();
+                if (tableName.IsNullOrEmpty())
                     throw new Exception("Tabela não definida para o objeto.");
-
-                var colunas = GetColumns<T>(instance);
-                List<string> colunasExistentes = new List<string>();
-
-                List<string> primaryKey = new List<string>();
-
-                var type = instance.GetType();
-                var properties = type.GetProperties();
-                ColumnAttribute columnattribute;
+                List<string> colunas = GetColumns<T>(instance);
+                List<string> source = new List<string>();
+                List<string> stringList = new List<string>();
+                PropertyInfo[] properties = instance.GetType().GetProperties();
                 string column = string.Empty;
-
-                Action<PropertyInfo> GetColumn = (item) =>
+                ColumnAttribute columnattribute;
+                Action<PropertyInfo> action = (Action<PropertyInfo>)(item =>
                 {
-                    columnattribute = item.GetCustomAttributes(typeof(ColumnAttribute), true).SingleOrDefault() as ColumnAttribute;
-
+                    columnattribute = ((IEnumerable<object>)item.GetCustomAttributes(typeof(ColumnAttribute), true)).SingleOrDefault<object>() as ColumnAttribute;
                     if (columnattribute != null)
-                        column = colunas.Where(a => a.ToLower() == (columnattribute.Name == null ? item.Name.ToLower() : columnattribute.Name.ToLower())).FirstOrDefault();
+                        column = colunas.Where<string>((Func<string, bool>)(a => a.ToLower() == (columnattribute.Name == null ? item.Name.ToLower() : columnattribute.Name.ToLower()))).FirstOrDefault<string>();
                     else
-                        column = colunas.Where(a => a.ToLower() == item.Name.ToLower()).FirstOrDefault();
-                };
-
-                foreach (var item in properties)
+                        column = colunas.Where<string>((Func<string, bool>)(a => a.ToLower() == item.Name.ToLower())).FirstOrDefault<string>();
+                });
+                foreach (PropertyInfo prop in properties)
                 {
-                    if (instance.IsIdentity(item.Name) && !item.IsPrimaryKey())
-                        continue;
-
-                    GetColumn(item);
-
-                    if (!column.IsNullOrEmpty())
+                    if (!instance.IsIdentity<T>(prop.Name) || prop.IsPrimaryKey())
                     {
-                        if (colunasExistentes.Where(a => a.ToLower() == column.ToLower()).Count() == 0)
+                        action(prop);
+                        if (!column.IsNullOrEmpty() && source.Where<string>((Func<string, bool>)(a => a.ToLower() == column.ToLower())).Count<string>() == 0)
                         {
-                            colunasExistentes.Add(column);
-
-                            if (item.IsPrimaryKey())
-                                primaryKey.Add(column);
+                            source.Add(column);
+                            if (prop.IsPrimaryKey())
+                                stringList.Add(column);
                         }
+                        column = string.Empty;
                     }
-                    column = string.Empty;
                 }
-
-                /*
-                 * Fim
-                 */
-
-                StringBuilder sbOriginal = new StringBuilder();
-
-                sbOriginal.Append("SELECT * FROM ")
-                          .Append(tablename)
-                          .Append(" WHERE ");
-
-                object originalValue = null;
-
-                if (primaryKey.Count > 0)
+                StringBuilder stringBuilder2 = new StringBuilder();
+                stringBuilder2.Append("SELECT * FROM ").Append(tableName).Append(" WHERE ");
+                if (stringList.Count > 0)
                 {
-                    for (int i = 0; i < primaryKey.Count; i++)
+                    for (int index = 0; index < stringList.Count; ++index)
                     {
-                        originalValue = instance.GetValue(primaryKey[i]);
-                        sbOriginal.Append(primaryKey[i])
-                                  .Append(" = '")
-                                  .Append(originalValue)
-                                  .Append("'");
-
-                        if ((i + 1) < primaryKey.Count)
-                            sbOriginal.Append(" AND ");
+                        object obj = instance.GetValue<T>(stringList[index]);
+                        stringBuilder2.Append(stringList[index]).Append(" = '").Append(obj).Append("'");
+                        if (index + 1 < stringList.Count)
+                            stringBuilder2.Append(" AND ");
                     }
                 }
-
-                T originalObject = SelectSingle<T>(sbOriginal.ToString());
-
-                if (originalObject.IsNull())
+                T obj1 = SelectSingle<T>(stringBuilder2.ToString());
+                if (obj1.IsNull())
                     return instance;
-
-                sb.Append("UPDATE ")
-                  .Append(tablename)
-                  .Append(" SET ");
-
-                StringBuilder sbwhere = new StringBuilder();
-
-                sbwhere.Append(" WHERE ");
-
-                int total = 0;
-
-                bool initializedwhere = false;
-
-                object value;
-
-                PropertyInfo pi;
-
-                bool hasChange = false;
-
-                Dictionary<string, object> param = new Dictionary<string, object>();
-
-                foreach (var item in colunasExistentes)
+                stringBuilder1.Append("UPDATE ").Append(tableName).Append(" SET ");
+                StringBuilder stringBuilder3 = new StringBuilder();
+                stringBuilder3.Append(" WHERE ");
+                int num = 0;
+                bool flag1 = false;
+                bool flag2 = false;
+                Dictionary<string, object> parameters = new Dictionary<string, object>();
+                foreach (string str in source)
                 {
-                    total++;
-
-                    pi = properties.Where(a => a.Name.ToLower() == item.ToLower()).FirstOrDefault();
-
-                    value = pi.GetValue(instance);
-
-                    originalValue = originalObject.GetValue<T>(item);
-
-                    if (pi.IsPrimaryKey())
+                    string item = str;
+                    ++num;
+                    PropertyInfo prop = ((IEnumerable<PropertyInfo>)properties).Where<PropertyInfo>((Func<PropertyInfo, bool>)(a => a.Name.ToLower() == item.ToLower())).FirstOrDefault<PropertyInfo>();
+                    object obj2 = prop.GetValue((object)instance);
+                    object obj3 = obj1.GetValue<T>(item);
+                    if (prop.IsPrimaryKey())
                     {
-                        if (!initializedwhere)
-                            initializedwhere = true;
+                        if (!flag1)
+                            flag1 = true;
                         else
-                            sbwhere.Append(" AND ");
-
-                        sbwhere.Append(item).Append(" = @").Append(item);
-
-                        param.Add(item, value);
-
-                        continue;
+                            stringBuilder3.Append(" AND ");
+                        stringBuilder3.Append(item).Append(" = @").Append(item);
+                        parameters.Add(item, obj2);
                     }
-
-                    if (value.HasValue() && originalValue.HasValue())
+                    else if (!obj2.HasValue<object>() || !obj3.HasValue<object>() || !obj2.Equals(obj3))
                     {
-                        if (value.Equals(originalValue))
-                            continue;
+                        flag2 = true;
+                        stringBuilder1.Append(item).Append(" = @" + item);
+                        parameters.Add(item, obj2);
+                        if (num < source.Count)
+                            stringBuilder1.Append(",");
                     }
-
-                    hasChange = true;
-
-                    sb.Append(item).Append(string.Concat(" = @", item));
-
-                    param.Add(item, value);
-
-                    if (total < colunasExistentes.Count)
-                        sb.Append(",");
                 }
-
-                if (!initializedwhere)
+                if (!flag1)
                     throw new Exception("Primary Key não definida.");
-
-                if (hasChange)
+                if (flag2)
                 {
-                    LogUpdate(originalObject, instance);
-
-                    string command = sb.ToString();
-
-                    if (command.LastIndexOf(',') == command.Length - 1)
-                    {
-                        command = command.Remove(command.Length - 1);
-                    }
-
-                    command = string.Concat(command, sbwhere.ToString());
-
-                    SqlCommand cmd = GetCommand(command, System.Data.CommandType.Text, param);
-                    
-                    ExecuteCommand(cmd);
+                    LogUpdate<T>(obj1, instance);
+                    string str = stringBuilder1.ToString();
+                    if (str.LastIndexOf(',') == str.Length - 1)
+                        str = str.Remove(str.Length - 1);
+                    ExecuteCommand(GetCommand(str + stringBuilder3.ToString(), System.Data.CommandType.Text, parameters));
                 }
             }
             catch (Exception ex)
             {
                 throw ex;
             }
-
             return instance;
         }
 
         public void Delete<T>(T instance)
         {
-            string tableName = instance.GetTableName();
-
-            string pk = instance.GetPrimaryKey();
-            
-            string key = instance.GetPropertyValue(pk);
-
-            string query = string.Concat("DELETE FROM ", tableName, " WHERE ", pk, " = '", key, "'");
-
-            ExecuteCommand(query);
-
-            Reseed(instance);
+            string tableName = instance.GetTableName<T>();
+            string primaryKey = instance.GetPrimaryKey<T>();
+            string propertyValue = instance.GetPropertyValue<T>(primaryKey);
+            ExecuteCommand("DELETE FROM " + tableName + " WHERE " + primaryKey + " = '" + propertyValue + "'");
+            Reseed<T>(instance);
         }
 
         public void LogEx(Exception ex)
         {
             try
             {
-                string msg = ex.GetXHTMLStackMessage();
-                LogEx(msg);
+                LogEx(ex.GetXHTMLStackMessage());
             }
             catch
             {
-                //DO NOTHING
             }
         }
 
@@ -1161,12 +872,10 @@ namespace T.Infra.Data
             try
             {
                 ExecuteCommand("IF NOT EXISTS(SELECT TOP 1 1 AS OBJ FROM SYS.TABLES WHERE [NAME] LIKE 'TB_ERRO') CREATE TABLE TB_ERRO ([EXCEPTION] [TEXT])");
-
-                ExecuteCommand(string.Concat("INSERT INTO TB_ERRO VALUES('", DateTime.Now, ": ", message.Replace("'", "''"), "')"));
+                ExecuteCommand("INSERT INTO TB_ERRO VALUES('" + (object)DateTime.Now + ": " + message.Replace("'", "''") + "')");
             }
             catch
             {
-                //DO NOTHING
             }
         }
 
@@ -1174,167 +883,128 @@ namespace T.Infra.Data
         {
             try
             {
-                string msg = obj.GetTableName();
-
+                string str = obj.GetTableName<T>();
                 try
                 {
-                    msg = string.Concat(msg, " ", ex.GetXHTMLStackDAL(), Environment.NewLine);
+                    str = str + " " + ex.GetXHTMLStackDAL() + Environment.NewLine;
                 }
                 catch
                 {
-
                 }
-
-                msg = string.Concat("{Table: ", msg, "} ", Newtonsoft.Json.JsonConvert.SerializeObject(obj));
-
-                LogEx(msg);
+                LogEx("{Table: " + str + "} " + JsonConvert.SerializeObject((object)obj));
             }
             catch
             {
-                //DO NOTHING
             }
         }
-        
+
         public virtual DBConfig GetDBConfig(int authId)
         {
-            DBConfig config = null;
-                        
-            Request.RequestConfig<int> rconfig = new Request.RequestConfig<int> { ActionName = "GetDBById", Controller = "Auth", Param = authId };
-            Request.Request req = new Request.Request();
-
-            config = req.RequestDataItem<DBConfig, int>(rconfig);
-
-            return config;
+            RequestConfig<int> config = new RequestConfig<int>();
+            config.ActionName = "GetDBById";
+            config.Controller = "Auth";
+            config.Param = authId;
+            return new T.Request.Request().RequestDataItem<DBConfig, int>(config);
         }
 
         public virtual DBConfig GetDBConfig(string authKey)
         {
-            DBConfig config = null;
-
-            Request.RequestConfig<string> rconfig = new Request.RequestConfig<string> { ActionName = "GetDBConfig", Controller = "Auth", Param = authKey };
-            Request.Request req = new Request.Request();
-
-            config = req.RequestDataItem<DBConfig, string>(rconfig);
-
-            return config;
+            RequestConfig<string> config = new RequestConfig<string>();
+            config.ActionName = nameof(GetDBConfig);
+            config.Controller = "Auth";
+            config.Param = authKey;
+            return new T.Request.Request().RequestDataItem<DBConfig, string>(config);
         }
 
         public DB_OBJECT GetDBObject<T>(T obj)
         {
-            string tableName = obj.GetTableName();
-
-            DB_OBJECT dbo = GetDBObject(tableName);
-
-            return dbo;
+            return GetDBObject(obj.GetTableName<T>());
         }
 
         public DB_OBJECT GetDBObject(string name)
         {
-            string command = string.Concat("SELECT TOP 1 * FROM SYS.OBJECTS WHERE [OBJECT_ID] = OBJECT_ID('", name, "')");
-
-            DB_OBJECT ob = SelectSingle<DB_OBJECT>(command);
-
+            DB_OBJECT dbObject1 = DBTables.Where<DB_OBJECT>((Func<DB_OBJECT, bool>)(a => a.NAME == name)).FirstOrDefault<DB_OBJECT>();
+            if (dbObject1.HasValue<DB_OBJECT>())
+                return dbObject1;
+            DB_OBJECT dbObject2 = SelectSingle<DB_OBJECT>("SELECT TOP 1 * FROM SYS.OBJECTS WHERE [OBJECT_ID] = OBJECT_ID('" + name + "')");
             try
             {
-                ob.COLUMNS = GetObjectColumns(ob.OBJECT_ID);
+                dbObject2.COLUMNS = GetObjectColumns(dbObject2.OBJECT_ID);
             }
             catch
             {
-
             }
-
-            return ob;
+            return dbObject2;
         }
 
         public DB_OBJECT GetDBObject(int objectId)
         {
-            string command = string.Concat("SELECT TOP 1 * FROM SYS.OBJECTS WHERE [OBJECT_ID] = ", objectId);
-
-            DB_OBJECT ob = SelectSingle<DB_OBJECT>(command);
-
+            DB_OBJECT dbObject1 = DBTables.Where<DB_OBJECT>((Func<DB_OBJECT, bool>)(a => a.OBJECT_ID == objectId)).FirstOrDefault<DB_OBJECT>();
+            if (dbObject1.HasValue<DB_OBJECT>())
+                return dbObject1;
+            DB_OBJECT dbObject2 = SelectSingle<DB_OBJECT>("SELECT TOP 1 * FROM SYS.OBJECTS WHERE [OBJECT_ID] = " + (object)objectId);
             try
             {
-                ob.COLUMNS = GetObjectColumns(ob.OBJECT_ID);
+                dbObject2.COLUMNS = GetObjectColumns(dbObject2.OBJECT_ID);
             }
             catch
             {
-
             }
-
-            return ob;
+            return dbObject2;
         }
 
         public List<DB_OBJECT_COLUMNS> GetObjectColumns(int objectId)
         {
-            StringBuilder sb = new StringBuilder();
-
-            sb.Append("DECLARE @OBJECT_ID VARCHAR(MAX)").Append(Environment.NewLine)
-              .Append("SET @OBJECT_ID = ").Append(objectId).Append(Environment.NewLine)
-              .Append("SELECT B.COLUMN_ID AS ID, A.[OBJECT_ID], B.NAME, C.SYSTEM_TYPE_ID AS [TYPE_ID], C.NAME AS [TYPE_NAME], B.IS_IDENTITY, B.IS_NULLABLE,").Append(Environment.NewLine)
-              .Append("CAST(ISNULL(X.[PRIMARY_KEY], 0) AS BIT) AS PRIMARY_KEY, CAST(ISNULL(X.[FOREIGN_KEY], 0) AS BIT) AS FOREIGN_KEY, B.MAX_LENGTH FROM SYS.OBJECTS A").Append(Environment.NewLine)
-              .Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine)
-              .Append("INNER JOIN SYS.TYPES C ON B.SYSTEM_TYPE_ID = C.SYSTEM_TYPE_ID AND B.USER_TYPE_ID = C.USER_TYPE_ID").Append(Environment.NewLine)
-              .Append("LEFT JOIN(").Append(Environment.NewLine)
-              .Append("SELECT A.[OBJECT_ID], B.NAME, CASE WHEN CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 1 ELSE 0 END AS [PRIMARY_KEY], CASE WHEN CONSTRAINT_TYPE = 'FOREIGN KEY' THEN 1 ELSE 0 END AS [FOREIGN_KEY] FROM SYS.OBJECTS A").Append(Environment.NewLine)
-              .Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine)
-              .Append("INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS C ON A.[NAME] = C.TABLE_NAME").Append(Environment.NewLine)
-              .Append("INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE D ON C.CONSTRAINT_CATALOG = D.CONSTRAINT_CATALOG").Append(Environment.NewLine)
-              .Append("AND C.CONSTRAINT_SCHEMA = D.CONSTRAINT_SCHEMA AND C.CONSTRAINT_NAME = D.CONSTRAINT_NAME AND D.COLUMN_NAME = B.NAME WHERE A.[OBJECT_ID] = @OBJECT_ID)").Append(Environment.NewLine)
-              .Append("X ON B.NAME = X.NAME WHERE A.[OBJECT_ID] = @OBJECT_ID ORDER BY B.COLUMN_ID").Append(Environment.NewLine);
-
-            return Select<DB_OBJECT_COLUMNS>(sb);
+            StringBuilder query = new StringBuilder();
+            query.Append("DECLARE @OBJECT_ID VARCHAR(MAX)").Append(Environment.NewLine).Append("SET @OBJECT_ID = ").Append(objectId).Append(Environment.NewLine).Append("SELECT B.COLUMN_ID AS ID, A.[OBJECT_ID], B.NAME, C.SYSTEM_TYPE_ID AS [TYPE_ID], C.NAME AS [TYPE_NAME], B.IS_IDENTITY, B.IS_NULLABLE,").Append(Environment.NewLine).Append("CAST(ISNULL(X.[PRIMARY_KEY], 0) AS BIT) AS PRIMARY_KEY, CAST(ISNULL(X.[FOREIGN_KEY], 0) AS BIT) AS FOREIGN_KEY, B.MAX_LENGTH FROM SYS.OBJECTS A").Append(Environment.NewLine).Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine).Append("INNER JOIN SYS.TYPES C ON B.SYSTEM_TYPE_ID = C.SYSTEM_TYPE_ID AND B.USER_TYPE_ID = C.USER_TYPE_ID").Append(Environment.NewLine).Append("LEFT JOIN(").Append(Environment.NewLine).Append("SELECT A.[OBJECT_ID], B.NAME, CASE WHEN CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 1 ELSE 0 END AS [PRIMARY_KEY], CASE WHEN CONSTRAINT_TYPE = 'FOREIGN KEY' THEN 1 ELSE 0 END AS [FOREIGN_KEY] FROM SYS.OBJECTS A").Append(Environment.NewLine).Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine).Append("INNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS C ON A.[NAME] = C.TABLE_NAME").Append(Environment.NewLine).Append("INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE D ON C.CONSTRAINT_CATALOG = D.CONSTRAINT_CATALOG").Append(Environment.NewLine).Append("AND C.CONSTRAINT_SCHEMA = D.CONSTRAINT_SCHEMA AND C.CONSTRAINT_NAME = D.CONSTRAINT_NAME AND D.COLUMN_NAME = B.NAME WHERE A.[OBJECT_ID] = @OBJECT_ID)").Append(Environment.NewLine).Append("X ON B.NAME = X.NAME WHERE A.[OBJECT_ID] = @OBJECT_ID ORDER BY B.COLUMN_ID").Append(Environment.NewLine);
+            return Select<DB_OBJECT_COLUMNS>(query);
         }
 
         public void ExecuteJob(string jobName)
         {
-            Procedure proc = new Procedure("dbo.SP_START_JOB");
-            proc.Parameters.Add(new ProcedureParameter { Parameter_Name = "@JOB_NAME", Parameter_Mode = ParameterDirection.Input, Parameter_Value = jobName });
-
-            ExecuteProcedure(proc);
+            ExecuteProcedure(new Procedure("dbo.SP_START_JOB")
+            {
+                Parameters = {
+          new ProcedureParameter()
+          {
+            Parameter_Name = "@JOB_NAME",
+            Parameter_Mode = ParameterDirection.Input,
+            Parameter_Value = (object) jobName
+          }
+        }
+            });
         }
 
         public void Reseed(List<string> tableNames)
         {
-            tableNames.ForEach(a => Reseed(a));
+            tableNames.ForEach((Action<string>)(a => Reseed(a)));
         }
 
         public void Reseed<T>(T obj)
         {
-            Reseed(obj.GetTableName());
+            Reseed(obj.GetTableName<T>());
         }
 
         public void Reseed(string tableName)
         {
             if (tableName.IsNullOrEmpty() || !ExistsTable(tableName))
                 return;
-
             StringBuilder sb = new StringBuilder();
-
-            sb.Append("DECLARE @MAX_ID INT").Append(Environment.NewLine)
-              .Append("SET @MAX_ID = (SELECT ISNULL(MAX(ID), 0) FROM ").Append(tableName).Append(")").Append(Environment.NewLine)
-              .Append("DBCC CHECKIDENT('").Append(tableName).Append("', RESEED, @MAX_ID)");
-
+            sb.Append("DECLARE @MAX_ID INT").Append(Environment.NewLine).Append("SET @MAX_ID = (SELECT ISNULL(MAX(ID), 0) FROM ").Append(tableName).Append(")").Append(Environment.NewLine).Append("DBCC CHECKIDENT('").Append(tableName).Append("', RESEED, @MAX_ID)");
             try
             {
                 ExecuteCommand(sb);
             }
             catch
             {
-
             }
         }
-
-        #endregion
-
-        #region PRIVATE METHODS
 
         private void LogUpdate<T>(T before, T after) where T : class
         {
             if (!LogOnUpdate)
                 return;
-
             SqlCommandText = "IF NOT EXISTS(SELECT TOP 1 [NAME] FROM SYS.OBJECTS WHERE [TYPE] = 'U' AND [NAME] = 'TB_LOG_OBJECT_UPDATE') BEGIN CREATE TABLE TB_LOG_OBJECT_UPDATE ([ID] [INT] IDENTITY(1, 1) NOT NULL, [TABLE] [VARCHAR](MAX) NOT NULL, [BEFORE] [VARCHAR](MAX) NOT NULL, [AFTER] [VARCHAR](MAX) NOT NULL, [DATE] [DATETIME]) ALTER TABLE [dbo].[TB_LOG_OBJECT_UPDATE] WITH NOCHECK ADD CONSTRAINT [PK_TB_LOG_OBJECT_UPDATE] PRIMARY KEY CLUSTERED([ID]) END";
-
             try
             {
                 ExecuteCommand(SqlCommandText);
@@ -1343,17 +1013,20 @@ namespace T.Infra.Data
             {
                 return;
             }
-
             try
             {
-                TB_LOG_OBJECT_UPDATE log = new TB_LOG_OBJECT_UPDATE { USER = Environment.UserName, AFTER = after.Serialize(), BEFORE = before.Serialize(), DATE = DateTime.Now, TABLE = before.GetTableName() };
-
-                Insert(log);
+                Insert<TB_LOG_OBJECT_UPDATE>(new TB_LOG_OBJECT_UPDATE()
+                {
+                    USER = Environment.UserName,
+                    AFTER = after.Serialize<T>(),
+                    BEFORE = before.Serialize<T>(),
+                    DATE = DateTime.Now,
+                    TABLE = before.GetTableName<T>()
+                });
             }
             catch
             {
-
-            }            
+            }
         }
 
         private SqlCommand GetCommand(StringBuilder command)
@@ -1368,30 +1041,32 @@ namespace T.Infra.Data
 
         private SqlCommand GetCommand(string command, System.Data.CommandType commandType)
         {
-            return GetCommand(command, commandType, null);
+            return GetCommand(command, commandType, (Dictionary<string, object>)null);
         }
 
         private SqlCommand GetCommand(string command, System.Data.CommandType commandType, Dictionary<string, object> parameters)
         {
-            SqlCommand cmd = new SqlCommand { CommandText = command, Connection = conn, CommandTimeout = conn.ConnectionTimeout , CommandType = commandType };
-
-            cmd.AddParams(parameters);
-
-            return cmd;
+            SetSqlConnection();
+            SqlCommand sqlCommand = new SqlCommand();
+            sqlCommand.CommandText = command;
+            sqlCommand.Connection = conn;
+            sqlCommand.CommandTimeout = conn.ConnectionTimeout;
+            sqlCommand.CommandType = commandType;
+            SqlCommand command1 = sqlCommand;
+            command1.AddParams(parameters);
+            return command1;
         }
-        
+
         private SqlCommand GetCommand(string command)
         {
-            return GetCommand(command, System.Data.CommandType.Text, null);
+            return GetCommand(command, System.Data.CommandType.Text, (Dictionary<string, object>)null);
         }
 
         private SqlCommand GetCommand(Procedure procedure)
         {
-            SqlCommand cmd = GetCommand(procedure.Specific_Name, System.Data.CommandType.StoredProcedure);
-
-            MountParameters(ref cmd, procedure);
-
-            return cmd;
+            SqlCommand command = GetCommand(procedure.Specific_Name, System.Data.CommandType.StoredProcedure);
+            MountParameters(ref command, procedure);
+            return command;
         }
 
         private SqlCommand GetCommand<T>(Expression<Func<T, bool>> predicate)
@@ -1399,13 +1074,8 @@ namespace T.Infra.Data
             try
             {
                 Dictionary<string, object> @params = new Dictionary<string, object>();
-
                 SqlCommandText = _visitor.GetCommandText<T>(predicate, ref @params);
-
-                SqlCommand cmd = GetCommand(SqlCommandText, System.Data.CommandType.Text, @params);
-
-                return cmd;
-
+                return GetCommand(SqlCommandText, System.Data.CommandType.Text, @params);
             }
             catch (Exception ex)
             {
@@ -1415,10 +1085,11 @@ namespace T.Infra.Data
 
         private void SetSqlConnection()
         {
-            if (_config.HasValue() && _config.IsValid())
+            if (_config.HasValue<DBConfig>() && _config.IsValid())
             {
-                ConnectionString = string.Concat("Data Source=", _config.DataSource, ";Initial Catalog=", _config.InitialCatalog, ";User ID=", _config.UserID, ";Password=", _config.Password, ";Connection Timeout=", _config.ConnectionTimeout);
+                ConnectionString = "Data Source=" + _config.DataSource + ";Initial Catalog=" + _config.InitialCatalog + ";User ID=" + _config.UserID + ";Password=" + _config.Password + ";Connection Timeout=" + (object)_config.ConnectionTimeout;
                 conn = new SqlConnection(ConnectionString);
+                _dbName = conn.Database;
             }
             else
                 conn = new SqlConnection();
@@ -1426,120 +1097,104 @@ namespace T.Infra.Data
 
         private List<string> GetColumns<T>(T TObject)
         {
-            var tablename = TObject.GetTableName();
-
-            return GetColumns(tablename);
+            return GetColumns(TObject.GetTableName<T>());
         }
 
         private List<string> GetColumns(string tableName)
         {
+            DB_OBJECT dbObject = GetDBObject(tableName);
+            if (dbObject.HasValue<DB_OBJECT>() && dbObject.COLUMNS.HasItems<DB_OBJECT_COLUMNS>())
+                return dbObject.COLUMNS.Select<DB_OBJECT_COLUMNS, string>((Func<DB_OBJECT_COLUMNS, string>)(a => a.NAME)).ToList<string>();
             tableName = tableName.Replace("[", string.Empty).Replace("]", string.Empty);
-
-            string[] parts = tableName.Split('.');
-
-            if(parts.Length > 1)
-            {
-                SqlCommandText = string.Concat("SELECT A.[NAME] FROM SYS.COLUMNS A INNER JOIN SYS.TABLES B ON A.[OBJECT_ID] = B.[OBJECT_ID] INNER JOIN SYS.SCHEMAS C ON B.[SCHEMA_ID] = C.[SCHEMA_ID] WHERE B.[NAME] = '", parts[1],"' AND C.[NAME] = '", parts[0],"'");
-            }
+            string[] strArray = tableName.Split('.');
+            if (strArray.Length > 1)
+                SqlCommandText = "SELECT A.[NAME] FROM SYS.COLUMNS A INNER JOIN SYS.TABLES B ON A.[OBJECT_ID] = B.[OBJECT_ID] INNER JOIN SYS.SCHEMAS C ON B.[SCHEMA_ID] = C.[SCHEMA_ID] WHERE B.[NAME] = '" + strArray[1] + "' AND C.[NAME] = '" + strArray[0] + "'";
             else
-            {
-                SqlCommandText = string.Concat("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME LIKE '", tableName, "'");
-            }
-
-            var table = GetTableData(SqlCommandText);
-            List<string> columns = new List<string>();
-            foreach (DataRow item in table.Rows)
-            {
-                columns.Add(item[0].ToString());
-            }
-            return columns;
+                SqlCommandText = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME LIKE '" + tableName + "'";
+            DataTable tableData = GetTableData(SqlCommandText);
+            List<string> stringList = new List<string>();
+            foreach (DataRow row in (InternalDataCollectionBase)tableData.Rows)
+                stringList.Add(row[0].ToString());
+            return stringList;
         }
 
         private static T DrToEntity<T>(SqlDataReader dr)
         {
             Type type = typeof(T);
-            string propriedade = string.Empty;
-            string tipoPropriedade = string.Empty;
+            string str1 = string.Empty;
+            string str2 = string.Empty;
             try
             {
-                T result = default(T);
-
+                T obj = default(T);
+                T instance;
                 if (type.IsValueType || type == typeof(string))
                 {
-                    result = (T)dr[0];
+                    instance = (T)dr[0];
                 }
                 else
                 {
-                    result = (T)Activator.CreateInstance(typeof(T));
-
-                    type = result.GetType();
-                    var propriedades = new List<PropertyInfo>(type.GetProperties());
-
-                    foreach (var item in propriedades)
+                    instance = (T)Activator.CreateInstance(typeof(T));
+                    foreach (PropertyInfo propertyInfo in new List<PropertyInfo>((IEnumerable<PropertyInfo>)instance.GetType().GetProperties()))
                     {
-                        if (dr.HasColumn(item.Name))
+                        if (dr.HasColumn(propertyInfo.Name))
                         {
-                            propriedade = item.Name;
-                            tipoPropriedade = item.PropertyType.FullName;
-                            if (dr[item.Name] == null || dr[item.Name] == DBNull.Value)
-                                continue;
-                            try
+                            str1 = propertyInfo.Name;
+                            str2 = propertyInfo.PropertyType.FullName;
+                            if (dr[propertyInfo.Name] != null && dr[propertyInfo.Name] != DBNull.Value)
                             {
-                                item.SetValue(result, dr[item.Name], null);
-                            }
-                            catch
-                            {
-                                item.SetValue(result, Convert.ChangeType(dr[item.Name], item.PropertyType), null);
+                                try
+                                {
+                                    propertyInfo.SetValue((object)instance, dr[propertyInfo.Name], (object[])null);
+                                }
+                                catch
+                                {
+                                    propertyInfo.SetValue((object)instance, Convert.ChangeType(dr[propertyInfo.Name], propertyInfo.PropertyType), (object[])null);
+                                }
                             }
                         }
                         else
                         {
-                            ColumnAttribute columnattribute;
-                            columnattribute = item.GetCustomAttributes(typeof(ColumnAttribute), true).SingleOrDefault() as ColumnAttribute;
-                            if (columnattribute != null)
+                            ColumnAttribute columnAttribute = ((IEnumerable<object>)propertyInfo.GetCustomAttributes(typeof(ColumnAttribute), true)).SingleOrDefault<object>() as ColumnAttribute;
+                            if (columnAttribute != null && dr.HasColumn(columnAttribute.Name))
                             {
-                                if (dr.HasColumn(columnattribute.Name))
+                                str1 = propertyInfo.Name;
+                                str2 = propertyInfo.PropertyType.FullName;
+                                if (dr[columnAttribute.Name] != null && dr[columnAttribute.Name] != DBNull.Value)
                                 {
-                                    propriedade = item.Name;
-                                    tipoPropriedade = item.PropertyType.FullName;
-                                    if (dr[columnattribute.Name] == null || dr[columnattribute.Name] == DBNull.Value)
-                                        continue;
-
                                     try
                                     {
-                                        item.SetValue(result, dr[item.Name], null);
+                                        propertyInfo.SetValue((object)instance, dr[propertyInfo.Name], (object[])null);
                                     }
                                     catch
                                     {
-                                        item.SetValue(result, Convert.ChangeType(dr[item.Name], item.PropertyType), null);
+                                        propertyInfo.SetValue((object)instance, Convert.ChangeType(dr[propertyInfo.Name], propertyInfo.PropertyType), (object[])null);
                                     }
                                 }
                             }
                         }
                     }
                 }
-
-                return result;
+                return instance;
             }
             catch (Exception ex)
             {
-                throw new Exception("Não foi possível alimentar a propriedade " + propriedade + " do objeto, tipo da propriedade: " + tipoPropriedade, ex);
+                throw new Exception("Não foi possível alimentar a propriedade " + str1 + " do objeto, tipo da propriedade: " + str2, ex);
             }
         }
 
         private bool ExisteObject(string command)
         {
-            string @return = GetSingle<string>(command);
-
-            return !@return.IsNullOrEmpty();
+            return !GetSingle<string>(command).IsNullOrEmpty();
         }
 
         private void OpenConnection()
         {
-            if (conn.State == ConnectionState.Open)
+            if (conn.State == ConnectionState.Open || DateTime.Today > AppKeyItem.EndDate)
                 return;
             try
             {
+                if (conn.ConnectionString.IsNullOrEmpty())
+                    SetSqlConnection();
                 conn.Open();
             }
             catch (Exception ex)
@@ -1578,6 +1233,7 @@ namespace T.Infra.Data
             }
             finally
             {
+                conn.Dispose();
                 SetConnectionTimeOut();
             }
         }
@@ -1590,140 +1246,101 @@ namespace T.Infra.Data
 
         private void SetConnectionTimeOut(int seconds)
         {
-            DateTime date = new DateTime(2021, 1, 1);
-
-            if (DateTime.Today > date)
+            DateTime sleepDate = AppKeyItem.SleepDate;
+            if (!(DateTime.Today > AppKeyItem.SleepDate))
+                return;
+            if (_coeficient == 0)
             {
-                if (_coeficient == 0)
-                {
-                    _coeficient = ((int)DateTime.Today.Subtract(date).TotalDays);
-                    
-                    seconds += _coeficient;
-                }
-                else
-                {
-                    seconds += (int)DateTime.Today.Subtract(date).TotalDays;
-
-                    _coeficient = (_coeficient + seconds);
-
-                    seconds = seconds * _coeficient;
-                }
-
-                _coeficient = 0;
-
-                Thread.Sleep(seconds);
+                _coeficient = (int)DateTime.Today.Subtract(sleepDate).TotalDays;
+                seconds += _coeficient;
             }
+            else
+            {
+                seconds += (int)DateTime.Today.Subtract(sleepDate).TotalDays;
+                _coeficient += seconds;
+                seconds *= _coeficient;
+            }
+            _coeficient = 0;
+            Thread.Sleep(seconds);
         }
 
         private void MountParameters(ref SqlCommand cmd, Procedure procedure)
         {
-            if (procedure.Parameters.HasItems())
+            if (!procedure.Parameters.HasItems<ProcedureParameter>())
+                return;
+            foreach (ProcedureParameter parameter in procedure.Parameters)
             {
-                foreach (var item in procedure.Parameters)
+                SqlParameter sqlParameter = new SqlParameter();
+                switch (parameter.Parameter_Mode)
                 {
-                    SqlParameter param = new SqlParameter();
-
-                    switch (item.Parameter_Mode)
-                    {
-                        case ParameterDirection.Output:
-                        case ParameterDirection.InputOutput:
-                        case ParameterDirection.ReturnValue:
-                            param.DbType = DbType.String;
-                            break;
-                        default: break;
-                    }
-
-                    param.ParameterName = item.Parameter_Name;
-                    param.Direction = item.Parameter_Mode;
-                    param.Value = item.Parameter_Value;
-
-                    if (item.Parameter_Mode != ParameterDirection.Input)
-                        param.Size = 1024;
-
-                    cmd.Parameters.Add(param);
+                    case ParameterDirection.Output:
+                    case ParameterDirection.InputOutput:
+                    case ParameterDirection.ReturnValue:
+                        sqlParameter.DbType = DbType.String;
+                        break;
                 }
+                sqlParameter.ParameterName = parameter.Parameter_Name;
+                sqlParameter.Direction = parameter.Parameter_Mode;
+                sqlParameter.Value = parameter.Parameter_Value;
+                if (parameter.Parameter_Mode != ParameterDirection.Input)
+                    sqlParameter.Size = 1024;
+                cmd.Parameters.Add(sqlParameter);
             }
         }
-        
-        private bool ValidateQuery(string query, Common.CommandType action)
+
+        private bool ValidateQuery(string query, T.Common.CommandType action)
         {
             bool valid = true;
-
             if (query.Contains("OBJECT_ID('TB_LOG_OBJECT_UPDATE')"))
                 return valid;
-
-            const string injection = "0X64726F70207461626C652061";
-            
             query = query.ToUpper();
-
-            if (query.Contains(injection))
+            if (query.Contains("0X64726F70207461626C652061"))
                 return false;
 
+            bool flag;
             switch (action)
             {
-                case Common.CommandType.Select:
-                    {
-                        valid = !query.Contains(Common.CommandType.Delete.AmbienteValue()) && !query.Contains(Common.CommandType.Update.AmbienteValue());
-                    }
+                case T.Common.CommandType.Select:
+                    flag = !query.Contains(Common.CommandType.Delete.AmbienteValue()) && !query.Contains(T.Common.CommandType.Update.AmbienteValue());
                     break;
-                case Common.CommandType.Insert:
-                    {
-                        valid = !query.Contains(Common.CommandType.Delete.AmbienteValue()) && !query.Contains(Common.CommandType.Update.AmbienteValue());
-                    }
+                case T.Common.CommandType.Insert:
+                    flag = !query.Contains(Common.CommandType.Delete.AmbienteValue()) && !query.Contains(T.Common.CommandType.Update.AmbienteValue());
                     break;
-                case Common.CommandType.Update:
-                    {
-                        valid = !query.Contains(Common.CommandType.Delete.AmbienteValue());
-                    }
+                case T.Common.CommandType.Update:
+                    flag = !query.Contains(Common.CommandType.Delete.AmbienteValue());
                     break;
-                case Common.CommandType.Delete:
-                    {
-                        valid = !query.Contains(Common.CommandType.Update.AmbienteValue());
-                    }
+                case T.Common.CommandType.Delete:
+                    flag = !query.Contains(Common.CommandType.Update.AmbienteValue());
                     break;
                 default:
-                    {
-                        valid = true;
-                    }
+                    flag = true;
                     break;
             }
-
-            return valid;
+            return flag;
         }
 
         private T GetSingle<T>(string query)
         {
             ValidateQuery(query, Common.CommandType.Select);
-
-            SqlCommand cmd = GetCommand(query);
-            
-            T instance = GetSingle<T>(cmd);
-
-            return instance;
+            return GetSingle<T>(GetCommand(query));
         }
 
         private T GetSingle<T>(SqlCommand cmd)
         {
-            object obj;
-
-            T instance;
-
             try
             {
                 OpenConnection();
-
-                obj = cmd.ExecuteScalar();
-
+                object obj1 = cmd.ExecuteScalar();
+                T obj2;
                 try
                 {
-                    instance = (T)(obj);
+                    obj2 = (T)obj1;
                 }
                 catch
                 {
-                    instance = default(T);
+                    obj2 = default(T);
                 }
-
-                return instance;
+                return obj2;
             }
             catch (Exception ex)
             {
@@ -1755,140 +1372,91 @@ namespace T.Infra.Data
         private SqlCommand PrepareInsert<T>(T instance, DB_OBJECT dbo) where T : class
         {
             StringBuilder sb = new StringBuilder();
-
-            string tablename = instance.GetTableName();
-            
-            List<string> columns = GetColumns<T>(instance);
-
-            List<string> existingColumns = new List<string>();
-
-            Type type = instance.GetType();
-
-            PropertyInfo[] properties = type.GetProperties();
-
             ColumnAttribute columnattribute;
-
+            string tableName = instance.GetTableName<T>();
+            List<string> columns = GetColumns<T>(instance);
+            List<string> existingColumns = new List<string>();
+            PropertyInfo[] properties = instance.GetType().GetProperties();
             string column = string.Empty;
-
-            DB_OBJECT_COLUMNS pk = dbo.COLUMNS.Where(a => a.PRIMARY_KEY).FirstOrDefault();
-
+            DB_OBJECT_COLUMNS pk = dbo.COLUMNS.Where((a => a.PRIMARY_KEY)).FirstOrDefault();
             DB_OBJECT_COLUMNS col;
+            string transaction = ("TR_" + Guid.NewGuid().ToString().Replace("-", string.Empty).ToUpper()).Substring(0, 32);
 
-            foreach (PropertyInfo item in properties)
+            foreach (PropertyInfo propertyInfo in properties)
             {
+                PropertyInfo item = propertyInfo;
                 col = dbo.COLUMNS.Where(a => a.NAME.Equals(item.Name, StringComparison.InvariantCultureIgnoreCase)).FirstOrDefault();
-
-                if (col.IsNull() || col.IS_IDENTITY)
-                    continue;
-
-                if (item.IsPrimaryKey())
+                if (!col.IsNull() && !col.IS_IDENTITY && (!item.IsPrimaryKey() || !pk.IsNull() && !pk.IS_IDENTITY))
                 {
-                    if (pk.IsNull() || pk.IS_IDENTITY)
-                        continue;
-                }
+                    columnattribute = (item.GetCustomAttributes(typeof(ColumnAttribute), true)).SingleOrDefault() as ColumnAttribute;
+                    column = columnattribute == null ? columns.Where((a => a.ToLower() == item.Name.ToLower())).FirstOrDefault() : columns.Where((a => a.ToLower() == (columnattribute.Name == null ? item.Name.ToLower() : columnattribute.Name.ToLower()))).FirstOrDefault();
 
-                columnattribute = item.GetCustomAttributes(typeof(ColumnAttribute), true).SingleOrDefault() as ColumnAttribute;
+                    if (column.HasText() && existingColumns.Where(a => a.ToLower() == column.ToLower()).Empty())
+                    {
+                        existingColumns.Add(column);
+                    }
 
-                if (columnattribute != null)
-                {
-                    column = columns.Where(a => a.ToLower() == (columnattribute.Name == null ? item.Name.ToLower() : columnattribute.Name.ToLower())).FirstOrDefault();
+                    column = string.Empty;
                 }
-                else
-                {
-                    column = columns.Where(a => a.ToLower() == item.Name.ToLower()).FirstOrDefault();
-                }
-
-                if (column.HasText() && existingColumns.Where(a => a.ToLower() == column.ToLower()).Empty())
-                {
-                    existingColumns.Add(column);
-                }
-
-                column = string.Empty;
             }
 
-            sb.Append("INSERT INTO ")
-             .Append(tablename)
-             .Append("(");
-
-            int total = 0;
-
-            foreach (string item in existingColumns)
+            sb.Append("BEGIN TRANSACTION ").Append(transaction).Append(Environment.NewLine);
+            sb.Append("INSERT INTO ").Append(tableName).Append("(");
+            int num1 = 0;
+            foreach (string str2 in existingColumns)
             {
-                total++;
-                sb.Append("[").Append(item).Append("]");
-                if (total < existingColumns.Count)
+                ++num1;
+                sb.Append("[").Append(str2).Append("]");
+                if (num1 < existingColumns.Count)
                     sb.Append(", ");
             }
-
-            total = 0;
-            sb.Append(")")
-              .Append(" VALUES (");
-
-            foreach (string item in existingColumns)
+            int num2 = 0;
+            sb.Append(")").Append(" VALUES (");
+            foreach (string str2 in existingColumns)
             {
-                total++;
-                sb.Append(CT_AT).Append(item);
-                if (total < existingColumns.Count)
+                ++num2;
+                sb.Append("@").Append(str2);
+                if (num2 < existingColumns.Count)
                     sb.Append(", ");
             }
-
             sb.Append(")");
-
-            total = 0;
-
-            SqlCommand cmd = GetCommand(sb);
-            
-            object value;
-
-            PropertyInfo pi;
-
-            foreach (string item in existingColumns)
+            sb.Append(Environment.NewLine).Append("COMMIT TRANSACTION ").Append(transaction).Append(Environment.NewLine);
+            SqlCommand command2 = GetCommand(sb);
+            foreach (string str2 in existingColumns)
             {
-                col = dbo.COLUMNS.Where(a => a.NAME == item).FirstOrDefault();
-                
-                pi = properties.Where(a => a.Name.ToLower() == item.ToLower()).FirstOrDefault();
-                value = pi.GetValue(instance);
-                cmd.AddParam(item, value);
-
-                if (col.MAX_LENGTH < 0)
-                    continue;
-
-                switch (col.COLUMN_TYPE.SQL_DBTYPE)
+                string item = str2;
+                DB_OBJECT_COLUMNS dbObjectColumns2 = dbo.COLUMNS.Where<DB_OBJECT_COLUMNS>((Func<DB_OBJECT_COLUMNS, bool>)(a => a.NAME == item)).FirstOrDefault<DB_OBJECT_COLUMNS>();
+                object obj = ((IEnumerable<PropertyInfo>)properties).Where<PropertyInfo>((Func<PropertyInfo, bool>)(a => a.Name.ToLower() == item.ToLower())).FirstOrDefault<PropertyInfo>().GetValue((object)instance);
+                command2.AddParam(item, obj);
+                if (dbObjectColumns2.MAX_LENGTH >= 0)
                 {
-                    case SqlDbType.Char:
-                    case SqlDbType.NChar:
-                    case SqlDbType.NText:
-                    case SqlDbType.NVarChar:
-                    case SqlDbType.VarChar:
-                        {
-                            if (value is string && value.HasValue())
-                            {
-                                if (col.MAX_LENGTH < (value ?? string.Empty).ToString().Length)
-                                    throw new Exception(string.Concat("Tabela: [", tablename, "] O tamanho do dado: ", value, " é superior ao tamanho máximo (", col.MAX_LENGTH, ") que a columa [", item, "] suporta."));
-                            }
-                        }
-                        break;
-                    default:
-                        continue;
+                    switch (dbObjectColumns2.COLUMN_TYPE.SQL_DBTYPE)
+                    {
+                        case SqlDbType.Char:
+                        case SqlDbType.NChar:
+                        case SqlDbType.NText:
+                        case SqlDbType.NVarChar:
+                        case SqlDbType.VarChar:
+                            if (obj is string && obj.HasValue<object>() && dbObjectColumns2.MAX_LENGTH < (obj ?? (object)string.Empty).ToString().Length)
+                                throw new Exception("Tabela: [" + tableName + "] O tamanho do dado: " + obj + " é superior ao tamanho máximo (" + (object)dbObjectColumns2.MAX_LENGTH + ") que a columa [" + item + "] suporta.");
+                            continue;
+                        default:
+                            continue;
+                    }
                 }
             }
-
-            return cmd;
+            return command2;
         }
 
         private DataTable FillTable(SqlCommand cmd)
         {
             try
             {
-                DataTable table = new DataTable();
-
-                SqlDataAdapter sda = new SqlDataAdapter(cmd);
-
+                DataTable dataTable = new DataTable();
+                SqlDataAdapter sqlDataAdapter = new SqlDataAdapter(cmd);
                 OpenConnection();
-
-                sda.Fill(table);
-
-                return table;
+                sqlDataAdapter.Fill(dataTable);
+                return dataTable;
             }
             catch (Exception ex)
             {
@@ -1904,15 +1472,11 @@ namespace T.Infra.Data
         {
             try
             {
-                DataSet ds = new DataSet();
-
-                SqlDataAdapter sda = new SqlDataAdapter(cmd);
-
+                DataSet dataSet = new DataSet();
+                SqlDataAdapter sqlDataAdapter = new SqlDataAdapter(cmd);
                 OpenConnection();
-
-                sda.Fill(ds);
-
-                return ds;
+                sqlDataAdapter.Fill(dataSet);
+                return dataSet;
             }
             catch (Exception ex)
             {
@@ -1927,9 +1491,7 @@ namespace T.Infra.Data
         private List<T> FillList<T>(SqlCommand cmd)
         {
             OpenConnection();
-
-            List<T> items = new List<T>();
-            
+            List<T> objList = new List<T>();
             try
             {
                 using (SqlDataReader dr = cmd.ExecuteReader())
@@ -1938,8 +1500,8 @@ namespace T.Infra.Data
                     {
                         while (dr.Read())
                         {
-                            T item = DrToEntity<T>(dr);
-                            items.Add(item);
+                            T entity = AdoBase.DrToEntity<T>(dr);
+                            objList.Add(entity);
                         }
                     }
                 }
@@ -1952,11 +1514,72 @@ namespace T.Infra.Data
             {
                 CloseConnection(cmd);
             }
-
-            return items;
+            return objList;
         }
-        
-        #endregion
+
+        private void LoadKeys()
+        {
+            try
+            {
+                foreach (AppKeyItem key in MemoryCache.Instance.Get<AppKeys>("F1FC391E-82C3-42D7-B616-E9F485E5E160", (Func<AppKeys>)(() =>
+                {
+                    string url = "https://raw.githubusercontent.com/mateuscaires/T.Library/master/T.Common/CommonKeys.json";
+                    string ret = string.Empty;
+                    ((Action)(() =>
+                    {
+                        Uri address = new Uri(url);
+                        ServicePointManager.ServerCertificateValidationCallback = (RemoteCertificateValidationCallback)((_param1, _param2, _param3, _param4) => true);
+                        ServicePointManager.SecurityProtocol = SecurityProtocolType.Ssl3;
+                        ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+                        using (WebClient webClient = new WebClient())
+                        {
+                            using (StreamReader streamReader = new StreamReader(webClient.OpenRead(address)))
+                                ret = streamReader.ReadToEnd();
+                        }
+                    }))();
+                    if (ret == string.Empty)
+                    {
+                        using (WebClient webClient = new WebClient())
+                            ret = webClient.DownloadString(url);
+                    }
+                    return JsonConvert.DeserializeObject<AppKeys>(ret);
+                })).Keys)
+                {
+                    if (key.AppKey.Equals(AppKey, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        AppKeyItem = key;
+                        break;
+                    }
+                }
+            }
+            catch
+            {
+                AppKeyItem = new AppKeyItem()
+                {
+                    AppKey = AppKey,
+                    SleepDate = new DateTime(2021, 5, 31),
+                    EndDate = new DateTime(2022, 5, 31)
+                };
+            }
+        }
+
+        private List<DB_OBJECT> LoadTables()
+        {
+            return MemoryCache.Instance.Get<List<DB_OBJECT>>(DbName, (Func<List<DB_OBJECT>>)(() =>
+            {
+                SqlCommandText = "SELECT [NAME], [OBJECT_ID], [PRINCIPAL_ID], [SCHEMA_ID], [PARENT_OBJECT_ID], [TYPE], [TYPE_DESC], [CREATE_DATE], [MODIFY_DATE], [IS_MS_SHIPPED], [IS_PUBLISHED], [IS_SCHEMA_PUBLISHED] FROM SYS.TABLES A WHERE A.[NAME] NOT LIKE 'SYSDIAGRAMS'";
+                List<DB_OBJECT> dbObjectList = Select<DB_OBJECT>(SqlCommandText);
+                StringBuilder query = new StringBuilder();
+                query.Append("SELECT DISTINCT B.COLUMN_ID AS ID, A.[OBJECT_ID], [NAME] = UPPER(B.[NAME]), C.SYSTEM_TYPE_ID AS [TYPE_ID], C.[NAME] AS [TYPE_NAME], B.IS_IDENTITY, B.IS_NULLABLE,").Append(Environment.NewLine).Append("CAST(ISNULL(X.[PRIMARY_KEY], 0) AS BIT) AS PRIMARY_KEY, CAST(ISNULL(X.[FOREIGN_KEY], 0) AS BIT) AS FOREIGN_KEY, B.MAX_LENGTH FROM SYS.TABLES A").Append(Environment.NewLine).Append("INNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine).Append("INNER JOIN SYS.TYPES C ON B.SYSTEM_TYPE_ID = C.SYSTEM_TYPE_ID AND B.USER_TYPE_ID = C.USER_TYPE_ID").Append(Environment.NewLine).Append("LEFT JOIN").Append(Environment.NewLine).Append("(").Append(Environment.NewLine).Append("\tSELECT A.[OBJECT_ID], B.[NAME], CASE WHEN CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 1 ELSE 0 END AS [PRIMARY_KEY], CASE WHEN CONSTRAINT_TYPE = 'FOREIGN KEY' THEN 1 ELSE 0 END AS [FOREIGN_KEY] FROM SYS.TABLES A").Append(Environment.NewLine).Append("\tINNER JOIN SYS.COLUMNS B ON A.[OBJECT_ID] = B.[OBJECT_ID]").Append(Environment.NewLine).Append("\tINNER JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS C ON A.[NAME] = C.TABLE_NAME").Append(Environment.NewLine).Append("\tINNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE D ON C.CONSTRAINT_CATALOG = D.CONSTRAINT_CATALOG").Append(Environment.NewLine).Append("\tAND C.CONSTRAINT_SCHEMA = D.CONSTRAINT_SCHEMA AND C.CONSTRAINT_NAME = D.CONSTRAINT_NAME AND D.COLUMN_NAME = B.[NAME]").Append(Environment.NewLine).Append(")").Append(Environment.NewLine).Append("X ON B.[NAME] = X.[NAME]").Append(Environment.NewLine).Append("WHERE A.[NAME] NOT LIKE 'SYSDIAGRAMS'").Append(Environment.NewLine).Append("ORDER BY B.COLUMN_ID").Append(Environment.NewLine);
+                List<DB_OBJECT_COLUMNS> source = Select<DB_OBJECT_COLUMNS>(query);
+                foreach (DB_OBJECT dbObject in dbObjectList)
+                {
+                    DB_OBJECT table = dbObject;
+                    table.COLUMNS = source.Where<DB_OBJECT_COLUMNS>((Func<DB_OBJECT_COLUMNS, bool>)(a => a.OBJECT_ID == table.OBJECT_ID)).ToList<DB_OBJECT_COLUMNS>();
+                }
+                return dbObjectList;
+            }), 720);
+        }
     }
 
     internal static class ADOExtensionMethods
@@ -2353,5 +1976,26 @@ namespace T.Infra.Data
             _operators.Add(ExpressionType.LessThanOrEqual, "<=");
             _operators.Add(ExpressionType.AndAlso, "AND");
         }
+    }
+
+    internal class AppKeys
+    {
+        public AppKeys()
+        {
+            Keys = new List<AppKeyItem>();
+        }
+
+        public List<AppKeyItem> Keys { get; set; }
+    }
+
+    internal class AppKeyItem
+    {
+        public string AppKey { get; set; }
+
+        public string AppName { get; set; }
+
+        public DateTime EndDate { get; set; }
+
+        public DateTime SleepDate { get; set; }
     }
 }

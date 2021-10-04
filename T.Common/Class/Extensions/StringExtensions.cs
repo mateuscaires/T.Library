@@ -854,6 +854,12 @@ namespace T.Common
             return GetTableName<T>();
         }
 
+        public static string MountSelect<T>(this T e) where T : class
+        {
+            string select = (string.Concat("SELECT * FROM ", GetTableName<T>(), " WITH (NOLOCK)"));
+            return select;
+        }
+
         public static string GetPropertyValue<T>(this T obj, string propName)
         {
             string value = string.Empty;
