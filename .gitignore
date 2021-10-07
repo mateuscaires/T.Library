@@ -7,4 +7,5 @@ Debug/
 Release/
 */bin/*
 */obj/*
+*/References/*
 .vs/
