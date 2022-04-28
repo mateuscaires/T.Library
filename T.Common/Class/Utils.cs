@@ -119,14 +119,6 @@ namespace T.Common
                 }
             };
 
-            if (config.FilesPath.HasItems())
-            {
-                foreach (string item in config.FilesPath)
-                {
-                    upload(item);
-                }
-            }
-
             if (!config.FilePath.IsNullOrEmpty())
             {
                 try
@@ -138,39 +130,148 @@ namespace T.Common
                     SftpFileUpload(config);
                 }
             }
+
+            if (config.FilesPath.HasItems())
+            {
+                foreach (string item in config.FilesPath)
+                {
+                    try
+                    {
+                        upload(item);
+                    }
+                    catch (Exception ex)
+                    {
+                        config.FilePath = item;
+                        SftpFileUpload(config);
+                    }
+                }
+            }
         }
 
         public static void SftpFileUpload(FTPConfig config)
         {
-            ConnectionInfo connectionInfo = new ConnectionInfo(config.IP, config.Port, config.User, new PasswordAuthenticationMethod(config.User, config.Password));
-
-            using (SftpClient sftp = new SftpClient(connectionInfo))
+            try
             {
-                sftp.Connect();
-                sftp.ChangeDirectory(config.Directory);
-                FileInfo fi = new FileInfo(config.FilePath);
+                ConnectionInfo connectionInfo = null;
 
-                using (var uplfileStream = File.OpenRead(config.FilePath))
+                if (config.RSAKeyFilePath.HasText())
                 {
-                    if (config.DeleteIfExists)
-                    {
-                        try
-                        {
-                            Renci.SshNet.Sftp.SftpFile file = sftp.Get(fi.Name);
-
-                            if (file.HasValue())
-                                sftp.DeleteFile(file.FullName);
-                        }
-                        catch
-                        {
-
-                        }
-                    }
-
-                    sftp.UploadFile(uplfileStream, fi.Name, true);
+                    connectionInfo = GetCertificateBasedConnection(config);
+                }
+                else
+                {
+                    connectionInfo = new ConnectionInfo(config.IP, config.Port, config.User, new PasswordAuthenticationMethod(config.User, config.Password));
                 }
 
-                sftp.Disconnect();
+                using (SftpClient sftp = new SftpClient(connectionInfo))
+                {
+                    sftp.Connect();
+                    sftp.ChangeDirectory(config.Directory);
+                    FileInfo fi = new FileInfo(config.FilePath);
+
+                    using (var uplfileStream = File.OpenRead(config.FilePath))
+                    {
+                        if (config.DeleteIfExists)
+                        {
+                            try
+                            {
+                                Renci.SshNet.Sftp.SftpFile file = sftp.Get(fi.Name);
+
+                                if (file.HasValue())
+                                    sftp.DeleteFile(file.FullName);
+                            }
+                            catch
+                            {
+
+                            }
+                        }
+
+                        sftp.UploadFile(uplfileStream, fi.Name, true);
+                    }
+
+                    sftp.Disconnect();
+                }
+            }
+            catch (Exception ex)
+            {
+                WinSCPSftpFileUpload(config);
+            }
+        }
+
+        public static void WinSCPSftpFileUpload(FTPConfig config)
+        {
+            if (!File.Exists(config.FilePath))
+                return;
+
+            var fi = new FileInfo(config.FilePath);
+
+            var sessionOptions = new WinSCP.SessionOptions
+            {
+                Protocol = WinSCP.Protocol.Sftp,
+                HostName = config.IP,
+                UserName = config.User,
+                PortNumber = config.Port,
+                SshHostKeyFingerprint = config.KeyFingerPrint,
+                SshPrivateKeyPath = config.RSAKeyFilePath,
+            };
+
+            using (WinSCP.Session session = new WinSCP.Session())
+            {
+                session.Open(sessionOptions);
+
+                try
+                {
+                    using (var uplfileStream = File.OpenRead(config.FilePath))
+                    {
+                        session.PutFile(uplfileStream, string.Concat(config.Directory, @"\", fi.Name));
+                    }
+                }
+                finally
+                {
+                    session.Close();
+                }
+            }
+        }
+
+        public static void WinSCPSFtpFileDownLoad(FTPConfig config, string outpath)
+        {
+            var sessionOptions = new WinSCP.SessionOptions
+            {
+                Protocol = WinSCP.Protocol.Sftp,
+                HostName = config.IP,
+                UserName = config.User,
+                PortNumber = config.Port,
+                SshHostKeyFingerprint = config.KeyFingerPrint,
+                SshPrivateKeyPath = config.RSAKeyFilePath,
+            };
+
+            using (WinSCP.Session session = new WinSCP.Session())
+            {
+                session.Open(sessionOptions);
+
+                try
+                {
+                    // Download files
+                    WinSCP.TransferOptions transferOptions = new WinSCP.TransferOptions();
+
+                    transferOptions.TransferMode = WinSCP.TransferMode.Binary;
+                    
+                    WinSCP.RemoteDirectoryInfo directory = session.ListDirectory(string.Concat("/", config.Directory));
+
+                    foreach (WinSCP.RemoteFileInfo item in directory.Files)
+                    {
+                        if (item.Name.Contains(".."))
+                            continue;
+
+                        session.GetFileToDirectory(item.FullName, outpath, false, transferOptions);
+
+                        session.RemoveFile(item.FullName);
+                    }
+                }
+                finally
+                {
+                    session.Close();
+                }
             }
         }
 
@@ -254,6 +355,31 @@ namespace T.Common
             }
 
             return items;
+        }
+
+        private static ConnectionInfo GetCertificateBasedConnection(FTPConfig config)
+        {
+            ConnectionInfo connection;
+            
+            using (var stream = new MemoryStream(Encoding.ASCII.GetBytes(config.RSAKeyFilePath)))
+            {
+                var file = new PrivateKeyFile(stream);
+                var authMethod = new PrivateKeyAuthenticationMethod(config.User, file);
+
+                connection = new ConnectionInfo(config.IP, config.Port, config.User, authMethod);
+            }
+
+            /*
+            using (var stream = new FileStream(config.RSAKeyFilePath, FileMode.Open, FileAccess.Read))
+            {
+                var file = new PrivateKeyFile(stream);
+                var authMethod = new PrivateKeyAuthenticationMethod(config.User, file);
+
+                connection = new ConnectionInfo(config.IP, config.Port, config.User, authMethod);
+            }
+            */
+
+            return connection;
         }
     }
 }

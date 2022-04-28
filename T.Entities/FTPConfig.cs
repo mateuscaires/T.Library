@@ -1,5 +1,6 @@
 ﻿
 using System.Collections.Generic;
+using System.IO;
 
 namespace T.Entities
 {
@@ -17,6 +18,8 @@ namespace T.Entities
         public string User { get; set; }
         public string Password { get; set; }
         public string FilePath { get; set; }
+        public string RSAKeyFilePath { get; set; }
+        public string KeyFingerPrint { get; set; }
         public string Directory { get; set; }
         public bool EnableSsl { get; set; }
         public bool UsePassive { get; set; }
