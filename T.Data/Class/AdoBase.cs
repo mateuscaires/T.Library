@@ -271,6 +271,7 @@ namespace T.Infra.Data
                 SqlCommand command = GetCommand(procedure.Specific_Name, System.Data.CommandType.StoredProcedure);
                 MountParameters(ref command, procedure);
                 ExecuteProcedure(command);
+                FillOutPutParameters(command, procedure);
             }
             catch (Exception ex)
             {
@@ -343,7 +344,12 @@ namespace T.Infra.Data
         {
             try
             {
-                return GetTableData(GetCommand(procedure));
+                var command = GetCommand(procedure);
+                var table = GetTableData(command);
+
+                FillOutPutParameters(command, procedure);
+
+                return table;
             }
             catch (Exception ex)
             {
@@ -358,6 +364,7 @@ namespace T.Infra.Data
             {
                 SqlCommand command = GetCommand(procedure);
                 DataTable tableData = GetTableData(command);
+                FillOutPutParameters(command, procedure);
                 foreach (ProcedureParameter parameter in procedure.Parameters)
                 {
                     if (parameter.Parameter_Mode == ParameterDirection.InputOutput)
@@ -400,7 +407,7 @@ namespace T.Infra.Data
 
         public void GetDataReaderArray(Procedure procedure, Action<string[], bool> callback)
         {
-            SqlCommand cmd = (SqlCommand)null;
+            SqlCommand cmd = null;
             try
             {
                 cmd = GetCommand(procedure);
@@ -427,11 +434,9 @@ namespace T.Infra.Data
                         while (flag);
                     }
                 }
-                foreach (ProcedureParameter parameter in procedure.Parameters)
-                {
-                    if (parameter.Parameter_Mode == ParameterDirection.InputOutput)
-                        parameter.Parameter_Value = cmd.Parameters[parameter.Parameter_Name].Value;
-                }
+
+                FillOutPutParameters(cmd, procedure);
+
             }
             catch (Exception ex)
             {
@@ -1579,6 +1584,34 @@ namespace T.Infra.Data
                 }
                 return dbObjectList;
             }), 720);
+        }
+
+        private void FillOutPutParameters(SqlCommand command, Procedure procedure)
+        {
+            try
+            {
+                foreach (SqlParameter item in command.Parameters)
+                {
+                    if (item.Direction == ParameterDirection.InputOutput || item.Direction == ParameterDirection.Output)
+                    {
+                        foreach (var p in procedure.Parameters)
+                        {
+                            if (p.Parameter_Value.HasText())
+                                continue;
+
+                            if (p.Parameter_Mode == ParameterDirection.InputOutput || p.Parameter_Mode == ParameterDirection.Output)
+                            {
+                                p.Parameter_Value = item.SqlValue;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+
+                throw ex;
+            }
         }
     }
 

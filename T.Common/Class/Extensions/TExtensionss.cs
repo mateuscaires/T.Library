@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -288,69 +287,6 @@ namespace T.Common
             {
                 return default(T);
             }
-        }
-
-        public static List<T> DataTableToList<T>(this DataTable table) where T : class, new()
-        {
-            List<T> objList = new List<T>();
-            foreach (DataRow row in (InternalDataCollectionBase)table.Rows)
-                objList.Add(row.DataRowToTObject<T>());
-            return objList;
-        }
-
-        public static T DataRowToTObject<T>(this DataRow row)
-        {
-            Type conversionType = typeof(T);
-            T obj1 = default(T);
-            if (conversionType != typeof(string) && ((object)obj1).IsNull())
-                obj1 = Activator.CreateInstance<T>();
-            if (conversionType.IsValueType)
-            {
-                if (conversionType.IsPrimitive)
-                {
-                    foreach (DataColumn column in (InternalDataCollectionBase)row.Table.Columns)
-                    {
-                        if (column.DataType == conversionType)
-                        {
-                            obj1 = (T)Convert.ChangeType(row[column.ColumnName], conversionType);
-                            break;
-                        }
-                    }
-                }
-            }
-            else if (conversionType == typeof(string))
-            {
-                foreach (DataColumn column in (InternalDataCollectionBase)row.Table.Columns)
-                {
-                    if (column.DataType == conversionType)
-                    {
-                        obj1 = (T)Convert.ChangeType(row[column.ColumnName], conversionType);
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                PropertyInfo[] properties = conversionType.GetProperties();
-                foreach (DataColumn column1 in (InternalDataCollectionBase)row.Table.Columns)
-                {
-                    DataColumn column = column1;
-                    PropertyInfo propertyInfo = ((IEnumerable<PropertyInfo>)properties).Where<PropertyInfo>((Func<PropertyInfo, bool>)(a => a.Name == column.ColumnName)).FirstOrDefault<PropertyInfo>();
-                    if (!propertyInfo.IsNull())
-                    {
-                        object obj2 = row[column.ColumnName];
-                        try
-                        {
-                            obj2 = obj2 == DBNull.Value ? (object)null : Convert.ChangeType(obj2, propertyInfo.PropertyType);
-                        }
-                        catch
-                        {
-                        }
-                        propertyInfo.SetValue((object)obj1, obj2, (object[])null);
-                    }
-                }
-            }
-            return obj1;
         }
     }
 }

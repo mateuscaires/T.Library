@@ -43,10 +43,13 @@
     <Compile Include="Attribute.cs" />
     <Compile Include="DataBaseObject.cs" />
     <Compile Include="DBConfig.cs" />
+    <Compile Include="ECode.cs" />
     <Compile Include="ExtensionsMethods.cs" />
     <Compile Include="FTPConfig.cs" />
     <Compile Include="JsonTable.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TableHeader.cs" />
+    <Compile Include="TReturn.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.DirectoryServices;
+using System.DirectoryServices.AccountManagement;
 using System.Linq;
 
 namespace T.Common
@@ -79,6 +80,67 @@ namespace T.Common
             }
 
             return users;
+        }
+
+        public static void ResetPassword(string userName, string newPassword)
+        {
+            using (var context = new PrincipalContext(ContextType.Domain))
+            {
+                using (var user = UserPrincipal.FindByIdentity(context, IdentityType.SamAccountName, userName))
+                {
+                    user.SetPassword(newPassword);
+                    if(user.IsAccountLockedOut())
+                    {
+                        user.UnlockAccount();
+                    }
+
+                    user.Save();
+                }
+            }
+        }
+
+        public static void UnlockAccount(string userName)
+        {
+            using (var context = new PrincipalContext(ContextType.Domain))
+            {
+                using (var user = UserPrincipal.FindByIdentity(context, IdentityType.SamAccountName, userName))
+                {
+                    if (user.IsAccountLockedOut())
+                    {
+                        user.UnlockAccount();
+                    }
+
+                    user.Save();
+                }
+            }
+        }
+
+        public static void ResetPassword(string ldap, string userName, string newPassword)
+        {
+            try
+            {
+                DirectoryEntry directoryEntry = new DirectoryEntry(ldap, userName, newPassword);
+
+                if (directoryEntry != null)
+                {
+                    DirectorySearcher searchEntry = new DirectorySearcher(directoryEntry);
+                    searchEntry.Filter = "(samaccountname=" + userName + ")";
+                    SearchResult result = searchEntry.FindOne();
+                    if (result != null)
+                    {
+                        DirectoryEntry userEntry = result.GetDirectoryEntry();
+                        if (userEntry != null)
+                        {
+                            userEntry.Invoke("SetPassword", new object[] { newPassword });
+                            userEntry.Properties["lockouttime"].Value = 0;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
         }
     }
 }
